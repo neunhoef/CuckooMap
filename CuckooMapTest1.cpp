@@ -1,7 +1,7 @@
 #include <iostream>
 #include <cassert>
 
-#include "CuckooCascade.h"
+#include "CuckooMap.h"
 
 struct Key {
   int k;
@@ -30,12 +30,16 @@ struct Value {
 };
 
 int main(int argc, char* argv[]) {
-  CuckooMap<Key, Value> m(16, 8);
+  InternalCuckooMap<Key, Value> m(1000);
   auto insert = [&]() -> void {
     for (int i = 0; i < 100; ++i) {
       Key k(i);
       Value v(i*i);
-      if (m.insert(k, &v)) {
+      int res = 1;
+      while (res > 0) {
+        res = m.insert(k, &v);
+      }
+      if (res == 0) {
         std::cout << "Inserted pair ";
       } else {
         std::cout << "Could not insert pair ";
@@ -47,12 +51,13 @@ int main(int argc, char* argv[]) {
   auto show = [&]() {
     for (int i = 99; i >= 0; --i) {
       Key k(i);
-      auto f = m.lookup(k);
-      if (f.found()) {
-        std::cout << "Found key " << i << " with value " << f.value->v
+      Key* kFound;
+      Value* vFound;
+      if (m.lookup(k, kFound, vFound)) {
+        std::cout << "Found key " << i << " with value " << vFound->v
           << std::endl;
-        assert(f.value->v == i*i);
-        assert(f.key->k == i);
+        assert(vFound->v == i*i);
+        assert(kFound->k == i);
       } else {
         std::cout << "Did not find key " << i << std::endl;
       }
