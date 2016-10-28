@@ -1,5 +1,5 @@
 #ifndef CUCKOO_HELPERS_H
-#define CUCKOO_HELPERS 1
+#define CUCKOO_HELPERS_H 1
 
 #include <cstdint>
 #include <mutex>

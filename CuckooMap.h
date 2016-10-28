@@ -1,7 +1,9 @@
+#ifndef CUCKOO_MAP_H
+#define CUCKOO_MAP_H 1
+
 #include <cstring>
 #include <vector>
 #include <mutex>
-#include <stdexcept>
 #include <memory>
 
 #include "CuckooHelpers.h"
@@ -224,3 +226,4 @@ class CuckooMap {
   HashKey1 _hasher1;    // Instance to compute the first hash function
 };
 
+#endif

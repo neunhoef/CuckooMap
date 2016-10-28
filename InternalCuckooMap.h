@@ -2,6 +2,10 @@
 #define INTERNAL_CUCKOO_MAP_H 1
 
 #include <cstdint>
+#include <memory>
+#include <cstring>
+
+#include "CuckooHelpers.h"
 
 // In the following template:
 //   Key is the key type, it must be copyable and movable, furthermore, Key
