@@ -81,27 +81,70 @@ class CuckooMap {
 
   struct Finding {
     friend class CuckooMap;
-    Key* key;
-    Value* value;
+    Key* key() const {
+      return _key;
+    }
+    Value* value() const {
+      return _value;
+    }
    private:
-    int32_t layer;
-    uint32_t shard;
-    CuckooMap* map;
+    Key* _key;
+    Value* _value;
+    int32_t _layer;
+    uint32_t _shard;
+    CuckooMap* _map;
    public:
     Finding(Key* k, Value* v, int32_t l, uint32_t s, CuckooMap* m)
-      : key(k), value(v), layer(l), shard(s), map(m) {
+      : _key(k), _value(v), _layer(l), _shard(s), _map(m) {
     }
     ~Finding() {
-      if (layer >= 0) {
-        map->release(*this);
+      if (_layer >= 0) {
+        _map->release(*this);
       }
     }
+    Finding(Finding const& other) {
+      std::cout << "Copy construct" << std::endl;
+      _key = other._key;
+      _value = other._value;
+      _layer = other._layer;
+      _shard = other._shard;
+      _map = other._map;
+      other._layer = -1;
+    }
+    Finding(Finding&& other) {
+      std::cout << "Move construct" << std::endl;
+      _key = other._key;
+      _value = other._value;
+      _layer = other._layer;
+      _shard = other._shard;
+      _map = other._map;
+      other._layer = -1;
+    }
+    Finding& operator=(Finding const& other) {
+      std::cout << "Copy assign" << std::endl;
+      _key = other._key;
+      _value = other._value;
+      _layer = other._layer;
+      _shard = other._shard;
+      _map = other._map;
+      return *this;
+    }
+    Finding& operator=(Finding && other) {
+      std::cout << "Move assign" << std::endl;
+      _key = other._key;
+      _value = other._value;
+      _layer = other._layer;
+      _shard = other._shard;
+      _map = other._map;
+      other._layer = -1;
+      return *this;
+    }
     bool found() {
-      return layer >= 0;
+      return _layer >= 0;
     }
     void remove() {
-      if (layer >= 0) {
-        map->remove(*this);
+      if (_layer >= 0) {
+        _map->remove(*this);
       }
     }
   };
@@ -129,19 +172,23 @@ class CuckooMap {
     MyMutexGuard guard(*_mutexes[shard]);
 
     int32_t layer = 0;
+    Finding f(nullptr, nullptr, -1, 0, this);
     while (static_cast<uint32_t>(layer) < s.size()) {
       Subtable& sub = *s[layer];
       Key* key;
       Value* value;
       if (sub.lookup(k, key, value)) {
-        Finding f(key, value, layer, shard, this);
+        f._key = key;
+        f._value = value;
+        f._layer = layer;
+        f._shard = shard;
         guard.release();
-        return f;
+        break;
       };
       
       ++layer;
     }
-    return Finding(nullptr, nullptr, -1, 0, this);
+    return f;
   }
 
   bool insert(Key const& k, Value const* v) {
@@ -200,11 +247,11 @@ class CuckooMap {
 
  private:
   void release(Finding& f) {
-    _mutexes[f.layer]->unlock();
+    _mutexes[f._layer]->unlock();
   }
 
   void remove(Finding& f) {
-    _tables[f.shard][f.layer]->remove(f.key, f.value);
+    _tables[f._shard][f._layer]->remove(f._key, f._value);
   }
 
   uint32_t findShard(Key const& k) {

@@ -49,10 +49,10 @@ int main(int argc, char* argv[]) {
       Key k(i);
       auto f = m.lookup(k);
       if (f.found()) {
-        std::cout << "Found key " << i << " with value " << f.value->v
+        std::cout << "Found key " << i << " with value " << f.value()->v
           << std::endl;
-        assert(f.value->v == i*i);
-        assert(f.key->k == i);
+        assert(f.value()->v == i*i);
+        assert(f.key()->k == i);
       } else {
         std::cout << "Did not find key " << i << std::endl;
       }
