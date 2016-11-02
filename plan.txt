@@ -1,0 +1,8 @@
+Tasks:
+
+  - generic performance test with hot set and configurable size
+  - CuckooMultiMap
+  - CuckooFilter
+  - upgrade CuckooMap with CuckooFilters
+  - upgrade CuckooMultiMap with lookup for super keys
+  - persistence?

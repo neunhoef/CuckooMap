@@ -14,4 +14,4 @@ ShardedCuckooMapTest:	ShardedCuckooMapTest.cpp ShardedMap.h CuckooMap.h CuckooHe
 	g++ -Wall -o ShardedCuckooMapTest ShardedCuckooMapTest.cpp -std=c++11 ${OPTIONS}
 
 clean:
-	rm -rf CuckooMapTest CuckooMapTest1
+	rm -rf ShardedCuckooMapTest CuckooMapTest InternalCuckooMapTest
