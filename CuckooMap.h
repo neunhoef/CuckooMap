@@ -1,12 +1,10 @@
 #ifndef CUCKOO_MAP_H
 #define CUCKOO_MAP_H 1
 
-#include <cstring>
-#include <vector>
-#include <mutex>
 #include <memory>
+#include <mutex>
+#include <vector>
 
-#include "CuckooHelpers.h"
 #include "InternalCuckooMap.h"
 
 // In the following template:
@@ -103,6 +101,10 @@ class CuckooMap {
       : _key(k), _value(v), _map(m), _layer(l) {
     }
 
+    Finding()
+      : _key(nullptr), _value(nullptr), _map(nullptr), _layer(-1) {
+    }
+    
     ~Finding() {
       if (_map != nullptr) {
         _map->release(*this);
@@ -210,7 +212,7 @@ class CuckooMap {
     //   { // this scope is necessary to unlock the table
     //     auto res = lookup(k);
     //     if (res.found() > 0) {
-    //       // work with *res.key and *res.value
+    //       // work with *res.key() and *res.value()
     //     }
     //   }
     MyMutexGuard guard(_mutex);

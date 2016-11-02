@@ -1,8 +1,6 @@
 #ifndef INTERNAL_CUCKOO_MAP_H
 #define INTERNAL_CUCKOO_MAP_H 1
 
-#include <cstdint>
-#include <memory>
 #include <cstring>
 
 #include "CuckooHelpers.h"
