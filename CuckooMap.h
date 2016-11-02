@@ -72,6 +72,16 @@ class CuckooMap {
   }
 
   struct Finding {
+    // This struct has two different duties: First it represents a guard
+    // for the _mutex of a CuckooMap. Secondly, it indicates what the
+    // result of a lookup was and allows subsequently to modify key
+    // (provided the hash values remain the same) and the value. If a
+    // key/value pair was found, one can remove it and one can lookup
+    // further keys or insert pairs whilst holding the mutex. The fact
+    // whether or not a key was found is indicated by key() returning
+    // a non-null pointer or nullptr. The instances releases the mutex
+    // at destruction, if _map is not a nullptr.
+
     friend class CuckooMap;
 
     Key* key() const {
@@ -85,70 +95,98 @@ class CuckooMap {
    private:
     Key* _key;
     Value* _value;
-    int32_t _layer;
     CuckooMap* _map;
+    int32_t _layer;
 
    public:
-    Finding(Key* k, Value* v, int32_t l, CuckooMap* m)
-      : _key(k), _value(v), _layer(l), _map(m) {
+    Finding(Key* k, Value* v, CuckooMap* m, int32_t l)
+      : _key(k), _value(v), _map(m), _layer(l) {
     }
 
     ~Finding() {
-      if (_layer >= 0) {
+      if (_map != nullptr) {
         _map->release(*this);
       }
     }
 
-#if 0
-    // Forbid copying and moving:
-    Finding(Finding const& other) = delete;
-    Finding(Finding&& other) = delete;
-    Finding& operator=(Finding const& other) = delete;
-    Finding& operator=(Finding && other) = delete;
-#endif
-
+    // Forbid outside copying:
+   private:
     Finding(Finding const& other) {
       std::cout << "CuckooMap::Finding copy construct" << std::endl;
       _key = other._key;
       _value = other._value;
+      _map = other._map;
+      _layer = other._layer;
+    }
+
+    Finding& operator=(Finding const& other) {
+      std::cout << "CuckooMap::Finding copy assign" << std::endl;
+      if (_map != nullptr) {
+        _map->release();
+      }
+      _key = other._key;
+      _value = other._value;
       _layer = other._layer;
       _map = other._map;
-      other._layer = -1;
+      return *this;
     }
+
+    // Allow moving:
+   public:
     Finding(Finding&& other) {
       std::cout << "CuckooMap::Finding move construct" << std::endl;
       _key = other._key;
       _value = other._value;
-      _layer = other._layer;
       _map = other._map;
-      other._layer = -1;
-    }
-    Finding& operator=(Finding const& other) {
-      std::cout << "CuckooMap::Finding copy assign" << std::endl;
-      _key = other._key;
-      _value = other._value;
       _layer = other._layer;
-      _map = other._map;
-      return *this;
+      other._map = nullptr;
     }
+
     Finding& operator=(Finding && other) {
       std::cout << "CuckooMap::Finding move assign" << std::endl;
+      if (_layer >= 0) {
+        _map->release();
+      }
       _key = other._key;
       _value = other._value;
-      _layer = other._layer;
       _map = other._map;
-      other._layer = -1;
+      _layer = other._layer;
+      other._map = nullptr;
       return *this;
     }
+
     // Return 1 if something was found and 0 otherwise. If this returns 0,
     // then key() and value() are undefined.
     int32_t found() {
-      return _layer >= 0 ? 1 : 0;
+      return _key != nullptr ? 1 : 0;
+    }
+
+    bool lookup(Key const& k) {
+      _key = nullptr;
+      _value = nullptr;
+      _layer = -1;
+      if (_map != nullptr) {
+        _map->innerLookup(k, *this);
+      }
+      return _layer >= 0;
+    }
+
+    bool insert(Key const& k, Value const& v) {
+      _key = nullptr;
+      _value = nullptr;
+      _layer = -1;
+      if (_map != nullptr) {
+        return _map->innerInsert(k, v);
+      }
+      return false;
     }
 
     void remove() {
-      if (_layer >= 0) {
+      if (_map != nullptr && _key != nullptr) {
         _map->remove(*this);
+        _key = nullptr;
+        _value = nullptr;
+        _layer = -1;
       }
     }
 
@@ -175,25 +213,10 @@ class CuckooMap {
     //       // work with *res.key and *res.value
     //     }
     //   }
-
     MyMutexGuard guard(_mutex);
-
-    int32_t layer = 0;
-    Finding f(nullptr, nullptr, -1, this);
-    while (static_cast<uint32_t>(layer) < _tables.size()) {
-      Subtable& sub = *_tables[layer];
-      Key* key;
-      Value* value;
-      if (sub.lookup(k, key, value)) {
-        f._key = key;
-        f._value = value;
-        f._layer = layer;
-        guard.release();
-        break;
-      };
-      
-      ++layer;
-    }
+    Finding f(nullptr, nullptr, this, -1);
+    innerLookup(k, f);
+    guard.release();
     return f;
   }
 
@@ -202,9 +225,44 @@ class CuckooMap {
     // returns true if the insertion took place and false if there was
     // already a pair with the same key k in the table, in which case
     // the table is unchanged.
-    
     MyMutexGuard guard(_mutex);
+    return innerInsert(k, v);
+  }
 
+  bool remove(Key const& k) {
+    // remove the pair with key k, if one is in the table. Return true if
+    // a pair was removed and false otherwise.
+    Finding f = lookup(k);
+    if (f.found() == 0) {
+      return false;
+    }
+    f.remove();
+    return true;
+  }
+
+ private:
+  void innerLookup(Key const& k, Finding& f) {
+    // f must be initialized with _key == nullptr
+    for (int32_t layer = 0; static_cast<uint32_t>(layer) < _tables.size();
+         ++layer) {
+      Subtable& sub = *_tables[layer];
+      Key* key;
+      Value* value;
+      if (sub.lookup(k, key, value)) {
+        f._key = key;
+        f._value = value;
+        f._layer = layer;
+        return;
+      };
+    }
+  }
+
+  bool innerInsert(Key const& k, Value const* v) {
+    // inserts a pair (k, v) into the table
+    // returns true if the insertion took place and false if there was
+    // already a pair with the same key k in the table, in which case
+    // the table is unchanged.
+    
     Key kCopy = k;
     char buffer[_valueSize];
     memcpy(buffer, v, _valueSize);
@@ -237,18 +295,6 @@ class CuckooMap {
     return true;
   }
 
-  bool remove(Key const& k) {
-    // remove the pair with key k, if one is in the table. Return true if
-    // a pair was removed and false otherwise.
-    Finding f = lookup(k);
-    if (f.found() == 0) {
-      return false;
-    }
-    f.remove();
-    return true;
-  }
-
- private:
   void release(Finding& f) {
     _mutex.unlock();
   }
