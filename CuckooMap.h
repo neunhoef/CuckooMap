@@ -168,7 +168,7 @@ class CuckooMap {
       if (_map != nullptr) {
         _map->innerLookup(k, *this);
       }
-      return _layer >= 0;
+      return _key != nullptr;
     }
 
     bool insert(Key const& k, Value const& v) {
