@@ -150,7 +150,7 @@ class CuckooMap {
     // Return 1 if something was found and 0 otherwise. If this returns 0,
     // then key() and value() are undefined.
     int32_t found() {
-      return _key != nullptr ? 1 : 0;
+      return (_map != nullptr &&_key != nullptr) ? 1 : 0;
     }
 
     // The following are only relevant for CuckooMultiMaps, we add the method
@@ -196,7 +196,7 @@ class CuckooMap {
     }
     f._key = nullptr;
     innerLookup(k, f);
-    return f.count() > 0;
+    return f.found() > 0;
   }
 
   bool insert(Key const& k, Value const* v) {
@@ -214,7 +214,9 @@ class CuckooMap {
       f._map = this;
       _mutex.lock();
     }
-    return innerInsert(k, v);
+    bool res = innerInsert(k, v);
+    f._key = nullptr;
+    return res;
   }
 
   bool remove(Key const& k) {
