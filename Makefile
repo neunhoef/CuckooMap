@@ -20,6 +20,13 @@ CuckooMultiMapTest:	CuckooMultiMapTest.cpp CuckooMultiMap.h CuckooMap.h CuckooHe
 ShardedCuckooMultiMapTest:	ShardedCuckooMultiMapTest.cpp CuckooMultiMap.h CuckooMap.h CuckooHelpers.h InternalCuckooMap.h ShardedMap.h Makefile
 	g++ -Wall -o ShardedCuckooMultiMapTest ShardedCuckooMultiMapTest.cpp -std=c++11 ${OPTIONS}
 
+test:	all
+	./InternalCuckooMapTest
+	./CuckooMapTest
+	./ShardedCuckooMapTest
+	./CuckooMultiMapTest
+	./ShardedCuckooMultiMapTest
+
 clean:
 	rm -rf ShardedCuckooMapTest CuckooMultiMapTest CuckooMapTest \
 		InternalCuckooMapTest ShardedCuckooMultiMapTest
