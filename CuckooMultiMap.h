@@ -239,6 +239,10 @@ class CuckooMultiMap {
     return true;
   }
 
+  uint64_t nrUsed() {
+    return _innerMap.nrUsed();
+  }
+
  private:
   bool innerInsert(Finding& f, Value const* v) {
     // f must just have been used to look for f._innerKey

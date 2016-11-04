@@ -245,6 +245,7 @@ class CuckooMap {
   }
 
   uint64_t nrUsed() const {
+    MyMutexGuard guard(_mutex);
     return _nrUsed;
   }
 

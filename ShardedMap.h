@@ -75,6 +75,14 @@ class ShardedMap {
     return t.remove(f);
   }
 
+  uint64_t nrUsed() {
+    uint64_t res = 0;
+    for (size_t shard = 0; shard < _tables.size(); ++shard) {
+      res += _tables[shard]->nrUsed();
+    }
+    return res;
+  }
+
  private:
 
   uint32_t findShard(typename InternalMap::KeyType const& k) {
