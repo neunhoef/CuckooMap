@@ -1,6 +1,6 @@
 Tasks:
 
-  - CuckooMultiMap
+  - ShardedMap<CuckooMultiMap> testen
   - move keys found forward in CuckooMap
   - test complete API
   - generic performance test with hot set and configurable size
