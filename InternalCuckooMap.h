@@ -104,6 +104,11 @@ class InternalCuckooMap {
     delete [] _theBuffer;
   }
 
+  InternalCuckooMap(InternalCuckooMap const&) = delete;
+  InternalCuckooMap(InternalCuckooMap&&) = delete;
+  InternalCuckooMap& operator=(InternalCuckooMap const&) = delete;
+  InternalCuckooMap& operator=(InternalCuckooMap&&) = delete;
+
   bool lookup(Key const& k, Key*& kOut, Value*& vOut) {
     // look up a key, return either false if no pair with key k is
     // found or true. In the latter case the pointers kOut and vOut
@@ -237,8 +242,16 @@ class InternalCuckooMap {
     return true;
   }
 
-  uint64_t size() {
+  uint64_t capacity() {
     return _size * SlotsPerBucket;
+  }
+
+  uint64_t nrUsed() {
+    return _nrUsed;
+  }
+
+  uint64_t memoryUsage() {
+    return sizeof(InternalCuckooMap) + _allocSize + _valueSize;
   }
 
  private:  // methods
@@ -294,6 +307,8 @@ class InternalCuckooMap {
   char* _base;          // pointer to allocated space, 64-byte aligned
   char* _allocBase;     // base of original allocation
   char* _theBuffer;     // pointer to an area of size _valueSize for value swap
+  uint64_t _nrUsed;     // number of pairs stored in the table
+
   HashKey1 _hasher1;    // Instance to compute the first hash function
   HashKey2 _hasher2;    // Instance to compute the second hash function
   CompKey _compKey;     // Instance to compare keys

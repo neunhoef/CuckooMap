@@ -11,12 +11,11 @@
 //   Key is the key type, it must be copyable and movable, furthermore, Key
 //     must be default constructible (without arguments) as empty and 
 //     must have an empty() method to indicate that the instance is
-//     empty, and a clear() method to make an initialized instance empty. 
-//     If using fasthash64 on all bytes of the object is not
+//     empty. If using fasthash64 on all bytes of the object is not
 //     a suitable hash function, one has to instanciate the template
 //     with two hash function types as 3rd and 4th argument. If
-//     std::equal_to<Key> is not implemented or does not behave correctly,
-//     one has to supply a comparison class as well.
+//     std::equal_to<Key> is not implemented or does not behave
+//     correctly, one has to supply a comparison class as well.
 //   Value is the value type, it is not actually used anywhere in the 
 //     template except as Value* for input and output of values. The
 //     template parameter basically only serves as a convenience to
@@ -45,6 +44,7 @@ class CuckooMap {
   typedef HashKey1 HashKey1Type;
   typedef HashKey2 HashKey2Type;
   typedef CompKey CompKeyType;
+  typedef InternalCuckooMap<Key, Value, HashKey1, HashKey2, CompKey> Subtable;
 
  private:
   size_t _firstSize;
@@ -73,8 +73,9 @@ class CuckooMap {
     // This struct has two different duties: First it represents a guard
     // for the _mutex of a CuckooMap. Secondly, it indicates what the
     // result of a lookup was and allows subsequently to modify key
-    // (provided the hash values remain the same) and the value. If a
-    // key/value pair was found, one can remove it and one can lookup
+    // (provided the hash values remain the same) and the value. This means
+    // that the Finding object can have a current pair or not. If it has a
+    // crrent key/value pair, one can remove it and one can lookup
     // further keys or insert pairs whilst holding the mutex. The fact
     // whether or not a key was found is indicated by key() returning
     // a non-null pointer or nullptr. The instances releases the mutex
@@ -107,53 +108,42 @@ class CuckooMap {
     
     ~Finding() {
       if (_map != nullptr) {
-        _map->release(*this);
+        _map->release();
       }
     }
 
-    // Forbid outside copying:
-   private:
-    Finding(Finding const& other) {
-      std::cout << "CuckooMap::Finding copy construct" << std::endl;
-      _key = other._key;
-      _value = other._value;
-      _map = other._map;
-      _layer = other._layer;
-    }
+    Finding(Finding const& other) = delete;
+    Finding& operator=(Finding const& other) = delete;
 
-    Finding& operator=(Finding const& other) {
-      std::cout << "CuckooMap::Finding copy assign" << std::endl;
+    // Allow moving, we need this to allow for copy elision where we
+    // return by value:
+   public:
+    Finding(Finding&& other) {
+      std::cout << "move" << std::endl;
       if (_map != nullptr) {
         _map->release();
       }
-      _key = other._key;
-      _value = other._value;
-      _layer = other._layer;
       _map = other._map;
-      return *this;
-    }
-
-    // Allow moving:
-   public:
-    Finding(Finding&& other) {
-      std::cout << "CuckooMap::Finding move construct" << std::endl;
-      _key = other._key;
-      _value = other._value;
-      _map = other._map;
-      _layer = other._layer;
       other._map = nullptr;
+
+      _key = other._key;
+      _value = other._value;
+      _layer = other._layer;
+      other._key = nullptr;
     }
 
     Finding& operator=(Finding && other) {
-      std::cout << "CuckooMap::Finding move assign" << std::endl;
-      if (_layer >= 0) {
+      std::cout << "move assign" << std::endl;
+      if (_map != nullptr) {
         _map->release();
       }
+      _map = other._map;
+      other._map = nullptr;
+
       _key = other._key;
       _value = other._value;
-      _map = other._map;
       _layer = other._layer;
-      other._map = nullptr;
+      other._key = nullptr;
       return *this;
     }
 
@@ -163,38 +153,14 @@ class CuckooMap {
       return _key != nullptr ? 1 : 0;
     }
 
-    bool lookup(Key const& k) {
-      _key = nullptr;
-      _value = nullptr;
-      _layer = -1;
-      if (_map != nullptr) {
-        _map->innerLookup(k, *this);
-      }
-      return _key != nullptr;
-    }
-
-    bool insert(Key const& k, Value const& v) {
-      _key = nullptr;
-      _value = nullptr;
-      _layer = -1;
-      if (_map != nullptr) {
-        return _map->innerInsert(k, v);
-      }
+    // The following are only relevant for CuckooMultiMaps, we add the method
+    // here to keep the API consistent.
+ 
+    bool next() {
       return false;
     }
 
-    void remove() {
-      if (_map != nullptr && _key != nullptr) {
-        _map->remove(*this);
-        _key = nullptr;
-        _value = nullptr;
-        _layer = -1;
-      }
-    }
-
-    // The following is only relevant for CuckooMultiMaps, we add the method
-    // here to keep the API consistent.
-    bool next() {
+    bool get(int32_t pos) {
       return false;
     }
   };
@@ -222,12 +188,32 @@ class CuckooMap {
     return f;
   }
 
+  bool lookup(Key const& k, Finding& f) {
+    if (f._map != this) {
+      f._map->_mutex.unlock();
+      f._map = this;
+      _mutex.lock();
+    }
+    f._key = nullptr;
+    innerLookup(k, f);
+    return f.count() > 0;
+  }
+
   bool insert(Key const& k, Value const* v) {
     // inserts a pair (k, v) into the table
     // returns true if the insertion took place and false if there was
     // already a pair with the same key k in the table, in which case
     // the table is unchanged.
     MyMutexGuard guard(_mutex);
+    return innerInsert(k, v);
+  }
+
+  bool insert(Key const& k, Value const* v, Finding& f) {
+    if (f._map != this) {
+      f._map->_mutex.unlock();
+      f._map = this;
+      _mutex.lock();
+    }
     return innerInsert(k, v);
   }
 
@@ -238,7 +224,20 @@ class CuckooMap {
     if (f.found() == 0) {
       return false;
     }
-    f.remove();
+    innerRemove(f);
+    return true;
+  }
+
+  bool remove(Finding& f) {
+    if (f._map != this) {
+      f._map->_mutex.unlock();
+      f._map = this;
+      _mutex.lock();
+    }
+    if (f._key == nullptr) {
+      return false;
+    }
+    innerRemove(f);
     return true;
   }
 
@@ -285,7 +284,7 @@ class CuckooMap {
     }
     // If we get here, then some pair has been expunged from all tables and
     // we have to append a new table:
-    uint64_t lastSize = _tables.back()->size();
+    uint64_t lastSize = _tables.back()->capacity();
     auto t = new Subtable(lastSize * 4, _valueSize, _valueAlign);
     try {
       _tables.emplace_back(t);
@@ -297,16 +296,15 @@ class CuckooMap {
     return true;
   }
 
-  void release(Finding& f) {
+  void release() {
     _mutex.unlock();
   }
 
-  void remove(Finding& f) {
+  void innerRemove(Finding& f) {
     _tables[f._layer]->remove(f._key, f._value);
+    f._key = nullptr;
   }
 
-  typedef InternalCuckooMap<Key, Value, HashKey1, HashKey2, CompKey> 
-          Subtable;
   std::vector<std::unique_ptr<Subtable>> _tables;
   std::mutex _mutex;
 };

@@ -1,8 +1,9 @@
 Tasks:
 
-  - generic performance test with hot set and configurable size
   - CuckooMultiMap
+  - move keys found forward in CuckooMap
+  - test complete API
+  - generic performance test with hot set and configurable size
   - CuckooFilter
   - upgrade CuckooMap with CuckooFilters
   - upgrade CuckooMultiMap with lookup for super keys
-  - persistence?

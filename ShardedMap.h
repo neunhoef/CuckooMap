@@ -41,6 +41,13 @@ class ShardedMap {
     return t.lookup(k);
   }
 
+  bool lookup(typename InternalMap::KeyType const& k,
+              typename InternalMap::Finding& f) {
+    uint32_t shard = findShard(k);
+    InternalMap& t = *_tables[shard];
+    return t.lookup(k, f);
+  }
+
   bool insert(typename InternalMap::KeyType const& k,
               typename InternalMap::ValueType const* v) {
     uint32_t shard = findShard(k);
@@ -48,10 +55,24 @@ class ShardedMap {
     return t.insert(k, v);
   }
 
+  bool insert(typename InternalMap::KeyType const& k,
+              typename InternalMap::ValueType const* v,
+              typename InternalMap::Finding& f) {
+    uint32_t shard = findShard(k);
+    InternalMap& t = *_tables[shard];
+    return t.insert(k, v, f);
+  }
+
   bool remove(typename InternalMap::KeyType const& k) {
     uint32_t shard = findShard(k);
     InternalMap& t = *_tables[shard];
     return t.remove(k);
+  }
+
+  bool remove(typename InternalMap::Finding& f) {
+    uint32_t shard = findShard(*f.key());
+    InternalMap& t = *_tables[shard];
+    return t.remove(f);
   }
 
  private:
