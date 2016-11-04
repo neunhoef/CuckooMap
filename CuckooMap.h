@@ -58,7 +58,8 @@ class CuckooMap {
             size_t valueAlign = alignof(Value))
     : _firstSize(firstSize),
       _valueSize(valueSize),
-      _valueAlign(valueAlign) {
+      _valueAlign(valueAlign),
+      _nrUsed(0) {
 
     auto t = new Subtable(firstSize, valueSize, valueAlign);
     try {
@@ -243,6 +244,10 @@ class CuckooMap {
     return true;
   }
 
+  uint64_t nrUsed() const {
+    return _nrUsed;
+  }
+
  private:
   void innerLookup(Key const& k, Finding& f) {
     // f must be initialized with _key == nullptr
@@ -279,6 +284,7 @@ class CuckooMap {
         if (res < 0) {   // key is already in the table
           return false;
         } else if (res == 0) {
+          ++_nrUsed;
           return true;
         }
       }
@@ -295,6 +301,7 @@ class CuckooMap {
       throw;
     }
     while (_tables.back()->insert(kCopy, vCopy) > 0) { }
+    ++_nrUsed;
     return true;
   }
 
@@ -305,10 +312,12 @@ class CuckooMap {
   void innerRemove(Finding& f) {
     _tables[f._layer]->remove(f._key, f._value);
     f._key = nullptr;
+    --_nrUsed;
   }
 
   std::vector<std::unique_ptr<Subtable>> _tables;
   std::mutex _mutex;
+  uint64_t _nrUsed;
 };
 
 #endif

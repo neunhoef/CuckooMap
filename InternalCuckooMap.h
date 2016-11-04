@@ -184,6 +184,7 @@ class InternalCuckooMap {
         *kTable = k;
 	vTable = findSlotValue(pos1, i);
 	std::memcpy(vTable, v, _valueSize);
+        ++_nrUsed;
         return 0;
       }
       if (_compKey(*kTable, k)) {
@@ -196,6 +197,7 @@ class InternalCuckooMap {
         *kTable = k;
 	vTable = findSlotValue(pos2, i);
 	std::memcpy(vTable, v, _valueSize);
+        ++_nrUsed;
         return 0;
       }
       if (_compKey(*kTable, k)) {
@@ -228,6 +230,7 @@ class InternalCuckooMap {
     k->~Key();
     new (k) Key();
     std::memset(v, 0, _valueSize);
+    --_nrUsed;
   }
 
   bool remove(Key const& k) {
