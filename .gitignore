@@ -2,3 +2,4 @@ CuckooMapTest
 CuckooMultiMapTest
 InternalCuckooMapTest
 ShardedCuckooMapTest
+ShardedCuckooMultiMapTest
