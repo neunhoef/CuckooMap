@@ -81,6 +81,12 @@ class CuckooMultiMap {
 
  public:
 
+  typedef Key KeyType;       // these are for ShardedMap
+  typedef Value ValueType;  
+  typedef HashKey1 HashKey1Type;
+  typedef HashKey2 HashKey2Type;
+  typedef CompKey CompKeyType;
+
   CuckooMultiMap(size_t firstSize,
                  size_t valueSize = sizeof(Value),
                  size_t valueAlign = alignof(Value))

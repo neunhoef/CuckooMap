@@ -1,5 +1,5 @@
 all:	ShardedCuckooMapTest CuckooMapTest InternalCuckooMapTest Makefile \
-	CuckooMultiMapTest
+	CuckooMultiMapTest ShardedCuckooMultiMapTest
 
 #OPTIONS=-O0 -g -fsanitize=address -fsanitize=undefined
 #OPTIONS=-O3
@@ -17,5 +17,9 @@ ShardedCuckooMapTest:	ShardedCuckooMapTest.cpp ShardedMap.h CuckooMap.h CuckooHe
 CuckooMultiMapTest:	CuckooMultiMapTest.cpp CuckooMultiMap.h CuckooMap.h CuckooHelpers.h InternalCuckooMap.h Makefile
 	g++ -Wall -o CuckooMultiMapTest CuckooMultiMapTest.cpp -std=c++11 ${OPTIONS}
 
+ShardedCuckooMultiMapTest:	ShardedCuckooMultiMapTest.cpp CuckooMultiMap.h CuckooMap.h CuckooHelpers.h InternalCuckooMap.h ShardedMap.h Makefile
+	g++ -Wall -o ShardedCuckooMultiMapTest ShardedCuckooMultiMapTest.cpp -std=c++11 ${OPTIONS}
+
 clean:
-	rm -rf ShardedCuckooMapTest CuckooMultiMapTest CuckooMapTest InternalCuckooMapTest
+	rm -rf ShardedCuckooMapTest CuckooMultiMapTest CuckooMapTest \
+		InternalCuckooMapTest ShardedCuckooMultiMapTest

@@ -28,7 +28,7 @@ struct Value {
 };
 
 int main(int argc, char* argv[]) {
-  CuckooMultiMap<Key, Value> m(16, 8);
+  CuckooMultiMap<Key, Value> m(16);
   auto insert = [&]() -> void {
     for (int x = 0; x < 10; ++x) {
       Key k(x);

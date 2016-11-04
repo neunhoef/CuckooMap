@@ -1,7 +1,8 @@
 #include <iostream>
 #include <cassert>
 
-#include "CuckooMap.h"
+#include "CuckooMultiMap.h"
+#include "ShardedMap.h"
 
 struct Key {
   int k;
@@ -9,7 +10,6 @@ struct Key {
   }
   Key(int i) : k(i) {
   }
-  bool empty() { return k == 0; }
 };
 
 namespace std {
@@ -26,40 +26,43 @@ struct Value {
   }
   Value(int i) : v(i) {
   }
-  bool empty() { return v == 0; }
 };
 
 int main(int argc, char* argv[]) {
-  CuckooMap<Key, Value> m(16);
+  ShardedMap<CuckooMultiMap<Key, Value>> m(16, 8);
   auto insert = [&]() -> void {
-    for (int i = 0; i < 100; ++i) {
-      Key k(i);
-      Value v(i*i);
-      if (m.insert(k, &v)) {
-        std::cout << "Inserted pair ";
-      } else {
-        std::cout << "Could not insert pair ";
-        assert(false);
+    for (int x = 0; x < 10; ++x) {
+      Key k(x);
+      for (int y = 0; y < 10; ++y) {
+        Value v(x + y * 10);
+        if (m.insert(k, &v)) {
+          std::cout << "Inserted pair ";
+        } else {
+          std::cout << "Could not insert pair ";
+          assert(false);
+        }
+        std::cout << "(" << x << ", " << v.v << ")" << std::endl;
       }
-      std::cout << "(" << i << ", " << i*i << ")" << std::endl;
     }
   };
   auto show = [&]() {
-    for (int i = 99; i >= 0; --i) {
-      Key k(i);
+    for (int x = 9; x >= 0; --x) {
+      Key k(x);
       auto f = m.lookup(k);
       if (f.found()) {
-        std::cout << "Found key " << i << " with value " << f.value()->v
-          << std::endl;
-        assert(f.value()->v == i*i);
-        assert(f.key()->k == i);
+        do {
+          std::cout << "Found key " << x << " with value " << f.value()->v
+              << std::endl;
+          assert(f.value()->v % 10 == x);
+          assert(f.key()->k == x);
+        } while (f.next());
       } else {
-        std::cout << "Did not find key " << i << std::endl;
+        std::cout << "Did not find key " << x << std::endl;
       }
     }
   };
   auto remove = [&]() -> void {
-    for (int i = 0; i < 50; ++i) {
+    for (int i = 0; i < 5; ++i) {
       Key k(i);
       if (m.remove(k)) {
         std::cout << "Removed key " << i << std::endl;
