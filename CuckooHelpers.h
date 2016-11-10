@@ -53,10 +53,10 @@ uint64_t fasthash64(const void* buf, size_t len, uint64_t seed) {
 }
 
 // C++ wrapper for the hash function:
-template<class T, uint64_t Seed>
+template <class T, uint64_t Seed>
 class HashWithSeed {
  public:
-  uint64_t operator()(T const& t) {
+  uint64_t operator()(T const& t) const {
     // Some implementation like Fnv or xxhash looking at bytes in type T,
     // taking the seed into account.
     auto p = reinterpret_cast<void const*>(&t);
@@ -67,10 +67,9 @@ class HashWithSeed {
 class MyMutexGuard {
   std::mutex& _mutex;
   bool _locked;
+
  public:
-  MyMutexGuard(std::mutex& m) : _mutex(m), _locked(true) {
-    _mutex.lock();
-  }
+  MyMutexGuard(std::mutex& m) : _mutex(m), _locked(true) { _mutex.lock(); }
   ~MyMutexGuard() {
     if (_locked) {
       _mutex.unlock();
