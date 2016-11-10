@@ -1,8 +1,7 @@
 #include <iostream>
 #include <cassert>
 
-#include "CuckooMultiMap.h"
-#include "ShardedMap.h"
+#include <cuckoomap/CuckooMultiMap.h>
 
 struct Key {
   int k;
@@ -29,7 +28,7 @@ struct Value {
 };
 
 int main(int argc, char* argv[]) {
-  ShardedMap<CuckooMultiMap<Key, Value>> m(16, 8);
+  CuckooMultiMap<Key, Value> m(16);
   auto insert = [&]() -> void {
     for (int x = 0; x < 10; ++x) {
       Key k(x);

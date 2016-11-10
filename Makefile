@@ -1,26 +1,27 @@
-all:	ShardedCuckooMapTest CuckooMapTest InternalCuckooMapTest Makefile \
+all: ShardedCuckooMapTest CuckooMapTest InternalCuckooMapTest Makefile \
 	CuckooMultiMapTest ShardedCuckooMultiMapTest
 
 #OPTIONS=-O0 -g -fsanitize=address -fsanitize=undefined
 #OPTIONS=-O3
 OPTIONS=-O0 -g
+CPPFLAGS= -I./include -std=c++11
 
-InternalCuckooMapTest:	InternalCuckooMapTest.cpp CuckooHelpers.h InternalCuckooMap.h Makefile
-	g++ -Wall -o InternalCuckooMapTest InternalCuckooMapTest.cpp -std=c++11 ${OPTIONS}
-	
-CuckooMapTest:	CuckooMapTest.cpp CuckooMap.h CuckooHelpers.h InternalCuckooMap.h Makefile
-	g++ -Wall -o CuckooMapTest CuckooMapTest.cpp -std=c++11 ${OPTIONS}
+InternalCuckooMapTest: tests/InternalCuckooMapTest.cpp include/cuckoomap/CuckooHelpers.h include/cuckoomap/InternalCuckooMap.h Makefile
+	$(CXX) -Wall -o InternalCuckooMapTest tests/InternalCuckooMapTest.cpp $(CPPFLAGS) ${OPTIONS}
 
-ShardedCuckooMapTest:	ShardedCuckooMapTest.cpp ShardedMap.h CuckooMap.h CuckooHelpers.h InternalCuckooMap.h Makefile
-	g++ -Wall -o ShardedCuckooMapTest ShardedCuckooMapTest.cpp -std=c++11 ${OPTIONS}
+CuckooMapTest: tests/CuckooMapTest.cpp include/cuckoomap/CuckooMap.h include/cuckoomap/CuckooHelpers.h include/cuckoomap/InternalCuckooMap.h Makefile
+	$(CXX) -Wall -o CuckooMapTest tests/CuckooMapTest.cpp $(CPPFLAGS) ${OPTIONS}
 
-CuckooMultiMapTest:	CuckooMultiMapTest.cpp CuckooMultiMap.h CuckooMap.h CuckooHelpers.h InternalCuckooMap.h Makefile
-	g++ -Wall -o CuckooMultiMapTest CuckooMultiMapTest.cpp -std=c++11 ${OPTIONS}
+ShardedCuckooMapTest: tests/ShardedCuckooMapTest.cpp include/cuckoomap/ShardedMap.h include/cuckoomap/CuckooMap.h include/cuckoomap/CuckooHelpers.h include/cuckoomap/InternalCuckooMap.h Makefile
+	$(CXX) -Wall -o ShardedCuckooMapTest tests/ShardedCuckooMapTest.cpp $(CPPFLAGS) ${OPTIONS}
 
-ShardedCuckooMultiMapTest:	ShardedCuckooMultiMapTest.cpp CuckooMultiMap.h CuckooMap.h CuckooHelpers.h InternalCuckooMap.h ShardedMap.h Makefile
-	g++ -Wall -o ShardedCuckooMultiMapTest ShardedCuckooMultiMapTest.cpp -std=c++11 ${OPTIONS}
+CuckooMultiMapTest: tests/CuckooMultiMapTest.cpp include/cuckoomap/CuckooMultiMap.h include/cuckoomap/CuckooMap.h include/cuckoomap/CuckooHelpers.h include/cuckoomap/InternalCuckooMap.h Makefile
+	$(CXX) -Wall -o CuckooMultiMapTest tests/CuckooMultiMapTest.cpp $(CPPFLAGS) ${OPTIONS}
 
-test:	all
+ShardedCuckooMultiMapTest: tests/ShardedCuckooMultiMapTest.cpp include/cuckoomap/CuckooMultiMap.h include/cuckoomap/CuckooMap.h include/cuckoomap/CuckooHelpers.h include/cuckoomap/InternalCuckooMap.h include/cuckoomap/ShardedMap.h Makefile
+	$(CXX) -Wall -o ShardedCuckooMultiMapTest tests/ShardedCuckooMultiMapTest.cpp $(CPPFLAGS) ${OPTIONS}
+
+test: all
 	./InternalCuckooMapTest
 	./CuckooMapTest
 	./ShardedCuckooMapTest
