@@ -1,23 +1,21 @@
-.PHONY: clean
-
-CXXFLAGS += -Wall -I./include -std=c++11
-#CXXFLAGS += -fsanitize=address -fsanitize=undefined
-
-ifdef DEBUG
-	CXXFLAGS += -O0 -g
-else
-	CXXFLAGS += -O3
-endif
+CXXFLAGS += -O3 -Wall -I./include -std=c++11
 
 headers=$(wildcard include/cuckoomap/*h)
 cpps=$(wildcard tests/*cpp)
-tests=$(basename ${cpps})
+tests=$(basename $(cpps))
 
-all: ${tests}
+all: $(tests) $(headers)
+
+debug: all
+debug: CXXFLAGS += -O0 -g
+
+sanatize: debug
+sanatize: CXXFLAGS += -fsanitize=address -fsanitize=undefined
 
 test: all
-	for f in ${tests}; do ./$$f; done;
+	for f in $(tests); do ./$$f; done;
 
 clean:
-	rm -fr tests/*o
-	rm -fr ${tests}
+	$(RM) -fr tests/*o
+	$(RM) -fr ${tests}
+.PHONY: clean
