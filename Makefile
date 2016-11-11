@@ -1,33 +1,23 @@
-all: ShardedCuckooMapTest CuckooMapTest InternalCuckooMapTest Makefile \
-	CuckooMultiMapTest ShardedCuckooMultiMapTest
+.PHONY: clean
 
-#OPTIONS=-O0 -g -fsanitize=address -fsanitize=undefined
-#OPTIONS=-O3
-OPTIONS=-O0 -g
-CPPFLAGS= -I./include -std=c++11
+CXXFLAGS += -Wall -I./include -std=c++11
+#CXXFLAGS += -fsanitize=address -fsanitize=undefined
 
-InternalCuckooMapTest: tests/InternalCuckooMapTest.cpp include/cuckoomap/CuckooHelpers.h include/cuckoomap/InternalCuckooMap.h Makefile
-	$(CXX) -Wall -o InternalCuckooMapTest tests/InternalCuckooMapTest.cpp $(CPPFLAGS) ${OPTIONS}
+ifdef DEBUG
+	CXXFLAGS += -O0 -g
+else
+	CXXFLAGS += -O3
+endif
 
-CuckooMapTest: tests/CuckooMapTest.cpp include/cuckoomap/CuckooMap.h include/cuckoomap/CuckooHelpers.h include/cuckoomap/InternalCuckooMap.h Makefile
-	$(CXX) -Wall -o CuckooMapTest tests/CuckooMapTest.cpp $(CPPFLAGS) ${OPTIONS}
+headers=$(wildcard include/cuckoomap/*h)
+cpps=$(wildcard tests/*cpp)
+tests=$(basename ${cpps})
 
-ShardedCuckooMapTest: tests/ShardedCuckooMapTest.cpp include/cuckoomap/ShardedMap.h include/cuckoomap/CuckooMap.h include/cuckoomap/CuckooHelpers.h include/cuckoomap/InternalCuckooMap.h Makefile
-	$(CXX) -Wall -o ShardedCuckooMapTest tests/ShardedCuckooMapTest.cpp $(CPPFLAGS) ${OPTIONS}
-
-CuckooMultiMapTest: tests/CuckooMultiMapTest.cpp include/cuckoomap/CuckooMultiMap.h include/cuckoomap/CuckooMap.h include/cuckoomap/CuckooHelpers.h include/cuckoomap/InternalCuckooMap.h Makefile
-	$(CXX) -Wall -o CuckooMultiMapTest tests/CuckooMultiMapTest.cpp $(CPPFLAGS) ${OPTIONS}
-
-ShardedCuckooMultiMapTest: tests/ShardedCuckooMultiMapTest.cpp include/cuckoomap/CuckooMultiMap.h include/cuckoomap/CuckooMap.h include/cuckoomap/CuckooHelpers.h include/cuckoomap/InternalCuckooMap.h include/cuckoomap/ShardedMap.h Makefile
-	$(CXX) -Wall -o ShardedCuckooMultiMapTest tests/ShardedCuckooMultiMapTest.cpp $(CPPFLAGS) ${OPTIONS}
+all: ${tests}
 
 test: all
-	./InternalCuckooMapTest
-	./CuckooMapTest
-	./ShardedCuckooMapTest
-	./CuckooMultiMapTest
-	./ShardedCuckooMultiMapTest
+	for f in ${tests}; do ./$$f; done;
 
 clean:
-	rm -rf ShardedCuckooMapTest CuckooMultiMapTest CuckooMapTest \
-		InternalCuckooMapTest ShardedCuckooMultiMapTest
+	rm -fr tests/*o
+	rm -fr ${tests}
