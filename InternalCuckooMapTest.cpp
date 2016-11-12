@@ -37,7 +37,7 @@ int main(int argc, char* argv[]) {
       Value v(i*i);
       int res = 1;
       while (res > 0) {
-        res = m.insert(k, &v);
+        res = m.insert(k, &v, nullptr, nullptr);
       }
       if (res == 0) {
         std::cout << "Inserted pair ";

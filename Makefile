@@ -32,4 +32,4 @@ test:	all
 
 clean:
 	rm -rf ShardedCuckooMapTest CuckooMultiMapTest CuckooMapTest \
-		InternalCuckooMapTest ShardedCuckooMultiMapTest
+		InternalCuckooMapTest ShardedCuckooMultiMapTest PerformanceTest

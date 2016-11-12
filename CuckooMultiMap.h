@@ -15,32 +15,26 @@
 //     with two hash function types as 3rd and 4th argument. If
 //     std::equal_to<Key> is not implemented or does not behave correctly,
 //     one has to supply a comparison class as well.
-//   Value is the value type, it is not actually used anywhere in the 
+//   Value is the value type, it is not actually used anywhere in the
 //     template except as Value* for input and output of values. The
 //     template parameter basically only serves as a convenience to
 //     provide defaults for valueAlign and valueSize and to reduce
 //     casts. Values are passed in and out as a Value* to allow for
-//     runtime configuration of the byte size and alignment. Within the 
+//     runtime configuration of the byte size and alignment. Within the
 //     table no constructors or destructors or assignment operators are
 //     called for Value, the data is only copied with std::memcpy. So Value
 //     must only contain POD!
 
-template<class Key,
-         class Value,
-         class HashKey1 = HashWithSeed<Key, 0xdeadbeefdeadbeefULL>,
-         class HashKey2 = HashWithSeed<Key, 0xabcdefabcdef1234ULL>,
-         class CompKey = std::equal_to<Key>>
+template <class Key, class Value,
+          class HashKey1 = HashWithSeed<Key, 0xdeadbeefdeadbeefULL>,
+          class HashKey2 = HashWithSeed<Key, 0xabcdefabcdef1234ULL>,
+          class CompKey = std::equal_to<Key>>
 class CuckooMultiMap {
-
   struct InnerKey : Key {
     int32_t seq;
-    InnerKey() : Key(), seq(0) {
-    }
-    InnerKey(Key const& other, int32_t s) : Key(other), seq(s) {
-    }
-    bool empty() {
-      return seq == 0;
-    }
+    InnerKey() : Key(), seq(0) {}
+    InnerKey(Key const& other, int32_t s) : Key(other), seq(s) {}
+    bool empty() { return seq == 0; }
   };
 
   struct InnerHashKey1 {
@@ -74,24 +68,21 @@ class CuckooMultiMap {
   };
 
   typedef CuckooMap<InnerKey, Value, InnerHashKey1, InnerHashKey2, InnerCompKey>
-          InnerCuckooMap;
+      InnerCuckooMap;
 
   InnerCuckooMap _innerMap;
   size_t _valueSize;
 
  public:
-
-  typedef Key KeyType;       // these are for ShardedMap
-  typedef Value ValueType;  
+  typedef Key KeyType;  // these are for ShardedMap
+  typedef Value ValueType;
   typedef HashKey1 HashKey1Type;
   typedef HashKey2 HashKey2Type;
   typedef CompKey CompKeyType;
 
-  CuckooMultiMap(size_t firstSize,
-                 size_t valueSize = sizeof(Value),
+  CuckooMultiMap(size_t firstSize, size_t valueSize = sizeof(Value),
                  size_t valueAlign = alignof(Value))
-    : _innerMap(firstSize, valueSize, valueAlign), _valueSize(valueSize) {
-  }
+      : _innerMap(firstSize, valueSize, valueAlign), _valueSize(valueSize) {}
 
   // Destruction, copying and moving exactly as CuckooMap
 
@@ -109,11 +100,13 @@ class CuckooMultiMap {
     InnerKey _innerKey;
     typename InnerCuckooMap::Finding _innerFinding;
     int32_t _count;
+
    public:
     Finding(Key const& k, CuckooMultiMap* m)
-      : _map(m), _innerKey(k, 0), _innerFinding(m->_innerMap.lookup(_innerKey)),
-        _count(_innerFinding.found() == 0 ? 0 : -_innerFinding.key()->seq) {
-    }
+        : _map(m),
+          _innerKey(k, 0),
+          _innerFinding(m->_innerMap.lookup(_innerKey)),
+          _count(_innerFinding.found() == 0 ? 0 : -_innerFinding.key()->seq) {}
 
     // This class is automatically movable (because InnerKey and _innerFinding
     // are, and not copyable, because _innerFinding is not. Destruction
@@ -126,19 +119,15 @@ class CuckooMultiMap {
       return _count;
     }
 
-    Key* key() {
-      return static_cast<Key*>(_innerFinding.key());
-    }
+    Key* key() { return static_cast<Key*>(_innerFinding.key()); }
 
-    Value* value() {
-      return _innerFinding.value();
-    }
+    Value* value() { return _innerFinding.value(); }
 
     bool next() {
       if (_map == nullptr && _innerFinding.found() == 0) {
         return false;
       }
-      if (_innerKey.seq+1 < _count) {
+      if (_innerKey.seq + 1 < _count) {
         ++_innerKey.seq;
         return _map->_innerMap.lookup(_innerKey, _innerFinding);
       }
@@ -146,7 +135,7 @@ class CuckooMultiMap {
     }
 
     bool get(int32_t pos) {
-      if (_map == nullptr &&_innerFinding.found() == 0) {
+      if (_map == nullptr && _innerFinding.found() == 0) {
         return false;
       }
       if (pos < 0 || pos >= _count) {
@@ -196,7 +185,7 @@ class CuckooMultiMap {
     Finding f(k, this);
     return innerInsert(f, v);
   }
- 
+
   bool insert(Key const& k, Value const* v, Finding& f) {
     *static_cast<Key*>(&f._innerKey) = k;
     f._innerKey.seq = 0;
@@ -209,7 +198,7 @@ class CuckooMultiMap {
     if (f._count == 0) {
       return false;
     }
-    for (int32_t i = f._count-1; i >= 0; --i) {
+    for (int32_t i = f._count - 1; i >= 0; --i) {
       f._innerKey.seq = i;
       _innerMap.lookup(f._innerKey, f._innerFinding);
       _innerMap.remove(f._innerFinding);
@@ -224,9 +213,9 @@ class CuckooMultiMap {
     // We can assume that f._innerKey is the one to be removed and that
     // f._innerFinding has found that one in _innerMap just before.
     int32_t pos = f._innerKey.seq;
-    if (pos < f._count-1) {
+    if (pos < f._count - 1) {
       Value* v = f._innerFinding.value();
-      f._innerKey.seq = f._count-1;
+      f._innerKey.seq = f._count - 1;
       _innerMap.lookup(f._innerKey, f._innerFinding);
       memcpy(v, f._innerFinding.value(), _valueSize);
     }
@@ -239,9 +228,7 @@ class CuckooMultiMap {
     return true;
   }
 
-  uint64_t nrUsed() {
-    return _innerMap.nrUsed();
-  }
+  uint64_t nrUsed() { return _innerMap.nrUsed(); }
 
  private:
   bool innerInsert(Finding& f, Value const* v) {

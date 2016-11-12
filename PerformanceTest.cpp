@@ -3,11 +3,14 @@
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <memory>
 #include <unordered_map>
 #include <vector>
 
 #include "CuckooHelpers.h"
 #include "CuckooMap.h"
+
+#define MIN(a, b) (((a) <= (b)) ? (a) : (b))
 
 struct Key {
   int k;
@@ -28,7 +31,7 @@ struct Value {
 namespace std {
 template <>
 struct equal_to<Key> {
-  bool operator()(Key const& a, Key const& b) { return a.k == b.k; }
+  bool operator()(Key const& a, Key const& b) const { return a.k == b.k; }
 };
 }
 
@@ -44,6 +47,9 @@ class RandomNumber {
     return _current;
   }
   unsigned nextInRange(int range) {
+    if (range == 0) {
+      return 0;
+    }
     next();
     return next() % range;
   }
@@ -78,22 +84,15 @@ typedef std::unordered_map<Key, Value*, KeyHash> unordered_map;
 class TestMap {
  private:
   int _useCuckoo;
-  CuckooMap<Key, Value>* _cuckoo;
-  unordered_map* _unordered;
+  std::unique_ptr<CuckooMap<Key, Value>> _cuckoo;
+  std::unique_ptr<unordered_map> _unordered;
 
  public:
   TestMap(int useCuckoo, size_t initialSize) : _useCuckoo(useCuckoo) {
     if (_useCuckoo) {
-      _cuckoo = new CuckooMap<Key, Value>(initialSize);
+      _cuckoo.reset(new CuckooMap<Key, Value>(initialSize));
     } else {
-      _unordered = new unordered_map(initialSize);
-    }
-  }
-  ~TestMap() {
-    if (_useCuckoo) {
-      delete _cuckoo;
-    } else {
-      delete _unordered;
+      _unordered.reset(new unordered_map(initialSize));
     }
   }
   Value* lookup(Key const& k) {
@@ -102,10 +101,10 @@ class TestMap {
       return (element.found() ? element.value() : nullptr);
     } else {
       auto element = _unordered->find(k);
-      return (element == _unordered->end() ? (*element).second : nullptr);
+      return (element != _unordered->end()) ? (*element).second : nullptr;
     }
   }
-  bool insert(Key const& k, Value const* v) {
+  bool insert(Key const& k, Value* v) {
     if (_useCuckoo) {
       return _cuckoo->insert(k, v);
     } else {
@@ -124,8 +123,9 @@ class TestMap {
 // Usage: PerformanceTest [cuckoo] [nInitial] [nTotal] [nWorking] [pInsert]
 //          [pLookup] [pRemove] [pWorking] [pMiss] [seed]
 //    [cuckoo]: 1 = use CuckooMap; 0 = Use std::unordered_map
-//    [nInitial]: Initial number of elements
-//    [nTotal]: Maximum number of elements
+//    [nOpCount]: Number of operations to run
+//    [nInitialSize]: Initial number of elements
+//    [nMaxSize]: Maximum number of elements
 //    [nWorking]: Size of working set
 //    [pInsert]: Probability of insert
 //    [pLookup]: Probability of lookup
@@ -134,23 +134,24 @@ class TestMap {
 //    [pMiss]: Probability of lookup for missing element
 //    [seed]: Seed for PRNG
 int main(int argc, char* argv[]) {
-  if (argc < 11) {
+  if (argc < 12) {
     std::cerr << "Incorrect number of parameters." << std::endl;
     exit(-1);
   }
 
   unsigned useCuckoo = atoi(argv[1]);
-  unsigned nInitial = atoi(argv[2]);
-  unsigned nTotal = atoi(argv[3]);
-  unsigned nWorking = atoi(argv[4]);
-  double pInsert = atof(argv[5]);
-  double pLookup = atof(argv[6]);
-  double pRemove = atof(argv[7]);
-  double pWorking = atof(argv[8]);
-  double pMiss = atof(argv[9]);
-  unsigned seed = atoi(argv[10]);
+  unsigned nOpCount = atoi(argv[2]);
+  unsigned nInitialSize = atoi(argv[3]);
+  unsigned nMaxSize = atoi(argv[4]);
+  unsigned nWorking = atoi(argv[5]);
+  double pInsert = atof(argv[6]);
+  double pLookup = atof(argv[7]);
+  double pRemove = atof(argv[8]);
+  double pWorking = atof(argv[9]);
+  double pMiss = atof(argv[10]);
+  unsigned seed = atoi(argv[11]);
 
-  if (nInitial > nTotal || nWorking > nTotal) {
+  if (nInitialSize > nMaxSize || nWorking > nMaxSize) {
     std::cerr << "Invalid initial/total/working numbers." << std::endl;
     exit(-1);
   }
@@ -167,46 +168,100 @@ int main(int argc, char* argv[]) {
 
   RandomNumber r(seed);
 
-  std::vector<double> weights;
-  weights.push_back(pInsert);
-  weights.push_back(pLookup);
-  weights.push_back(pRemove);
-  WeightedSelector operations(seed, weights);
+  std::vector<double> opWeights;
+  opWeights.push_back(pInsert);
+  opWeights.push_back(pLookup);
+  opWeights.push_back(pRemove);
+  WeightedSelector operations(seed, opWeights);
 
-  TestMap map(useCuckoo, nInitial);
-  unsigned min = 0;
-  unsigned max = 0;
-  for (; max < nInitial; max++) {
-    Key k(max);
-    Value* v = new Value(max);
-    bool success = map.insert(k, v);
-    if (!success) {
-      std::cout << "Failed to insert " << max << std::endl;
-      exit(-1);
+  std::vector<double> workingWeights;
+  workingWeights.push_back(1.0 - pWorking);
+  workingWeights.push_back(pWorking);
+  WeightedSelector working(seed, workingWeights);
+
+  std::vector<double> missWeights;
+  missWeights.push_back(1.0 - pMiss);
+  missWeights.push_back(pMiss);
+  WeightedSelector miss(seed, missWeights);
+
+  TestMap map(useCuckoo, nInitialSize);
+  unsigned minElement = 0;
+  unsigned maxElement = 0;
+  unsigned opCode;
+  unsigned current;
+  unsigned barrier, nHot, nCold;
+  bool success;
+  Key* k;
+  Value* v;
+  for (unsigned i = 0; i < nOpCount; i++) {
+    opCode = operations.next();
+
+    switch (opCode) {
+      case 0:
+        // insert if allowed
+        if (maxElement - minElement >= nMaxSize) {
+          break;
+        }
+
+        current = maxElement++;
+        k = new Key(current);
+        v = new Value(current);
+        success = map.insert(*k, v);
+        if (!success) {
+          std::cout << "Failed to insert " << current << std::endl;
+          exit(-1);
+        } else {
+          // std::cout << "Inserted " << current << std::endl;
+        }
+        delete k;
+        delete v;
+        break;
+      case 1:
+        // lookup
+        barrier = MIN(minElement + nWorking, maxElement);
+        nHot = barrier - minElement;
+        nCold = maxElement - barrier;
+        if (miss.next()) {
+          current = maxElement + r.next();
+        } else if (working.next()) {
+          current = minElement + r.nextInRange(nHot);
+        } else {
+          current = nCold ? barrier + r.nextInRange(nCold)
+                          : minElement + r.nextInRange(nHot);
+        }
+
+        k = new Key(current);
+        v = map.lookup(current);
+        /*if (v == nullptr) {
+          std::cout << "Failed to find " << current << std::endl;
+        } else {
+          std::cout << "Found " << current << std::endl;
+        }*/
+        delete k;
+        break;
+      case 2:
+        // remove if allowed
+        if (minElement >= maxElement) {
+          break;
+        }
+        current = working.next() ? minElement++ : maxElement--;
+
+        k = new Key(current);
+        success = map.remove(current);
+        if (!success) {
+          std::cout << "Failed to remove " << current << std::endl;
+          exit(-1);
+        } else {
+          // std::cout << "Removed " << current << std::endl;
+        }
+        delete k;
+        break;
+      default:
+        break;
     }
   }
 
-  for (unsigned i = min; i < max; i++) {
-    Key k(i);
-    Value* v = map.lookup(k);
-    if (v == nullptr) {
-      std::cout << "Failed to find " << i << std::endl;
-      exit(-1);
-    }
-  }
-
-  for (unsigned i = min; i < max; i++) {
-    Key k(i);
-    Value* v = map.lookup(k);
-    bool success = map.remove(k);
-    if (!success) {
-      std::cout << "Failed to remove " << i << std::endl;
-      exit(-1);
-    }
-    delete v;
-  }
-
-  std::cout << "Done." << std::endl;
+  // std::cout << "Done." << std::endl;
 
   exit(0);
 }

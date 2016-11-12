@@ -1,6 +1,7 @@
 #ifndef CUCKOO_MAP_H
 #define CUCKOO_MAP_H 1
 
+#include <iostream>
 #include <memory>
 #include <mutex>
 #include <vector>
@@ -9,19 +10,19 @@
 
 // In the following template:
 //   Key is the key type, it must be copyable and movable, furthermore, Key
-//     must be default constructible (without arguments) as empty and 
+//     must be default constructible (without arguments) as empty and
 //     must have an empty() method to indicate that the instance is
 //     empty. If using fasthash64 on all bytes of the object is not
 //     a suitable hash function, one has to instanciate the template
 //     with two hash function types as 3rd and 4th argument. If
 //     std::equal_to<Key> is not implemented or does not behave
 //     correctly, one has to supply a comparison class as well.
-//   Value is the value type, it is not actually used anywhere in the 
+//   Value is the value type, it is not actually used anywhere in the
 //     template except as Value* for input and output of values. The
 //     template parameter basically only serves as a convenience to
 //     provide defaults for valueAlign and valueSize and to reduce
 //     casts. Values are passed in and out as a Value* to allow for
-//     runtime configuration of the byte size and alignment. Within the 
+//     runtime configuration of the byte size and alignment. Within the
 //     table no constructors or destructors or assignment operators are
 //     called for Value, the data is only copied with std::memcpy. So Value
 //     must only contain POD!
@@ -31,16 +32,14 @@
 // values that are actually currently stored in the map. Keys must only be
 // changed as long as their hash and fingerprint does not change!
 
-template<class Key,
-         class Value,
-         class HashKey1 = HashWithSeed<Key, 0xdeadbeefdeadbeefULL>,
-         class HashKey2 = HashWithSeed<Key, 0xabcdefabcdef1234ULL>,
-         class CompKey = std::equal_to<Key>>
+template <class Key, class Value,
+          class HashKey1 = HashWithSeed<Key, 0xdeadbeefdeadbeefULL>,
+          class HashKey2 = HashWithSeed<Key, 0xabcdefabcdef1234ULL>,
+          class CompKey = std::equal_to<Key>>
 class CuckooMap {
-
  public:
-  typedef Key KeyType;       // these are for ShardedMap
-  typedef Value ValueType;  
+  typedef Key KeyType;  // these are for ShardedMap
+  typedef Value ValueType;
   typedef HashKey1 HashKey1Type;
   typedef HashKey2 HashKey2Type;
   typedef CompKey CompKeyType;
@@ -50,17 +49,15 @@ class CuckooMap {
   size_t _firstSize;
   size_t _valueSize;
   size_t _valueAlign;
+  CompKey _compKey;
 
  public:
-
-  CuckooMap(size_t firstSize,
-            size_t valueSize = sizeof(Value),
+  CuckooMap(size_t firstSize, size_t valueSize = sizeof(Value),
             size_t valueAlign = alignof(Value))
-    : _firstSize(firstSize),
-      _valueSize(valueSize),
-      _valueAlign(valueAlign),
-      _nrUsed(0) {
-
+      : _firstSize(firstSize),
+        _valueSize(valueSize),
+        _valueAlign(valueAlign),
+        _nrUsed(0) {
     auto t = new Subtable(firstSize, valueSize, valueAlign);
     try {
       _tables.emplace_back(t);
@@ -84,13 +81,9 @@ class CuckooMap {
 
     friend class CuckooMap;
 
-    Key* key() const {
-      return _key;
-    }
+    Key* key() const { return _key; }
 
-    Value* value() const {
-      return _value;
-    }
+    Value* value() const { return _value; }
 
    private:
     Key* _key;
@@ -100,13 +93,10 @@ class CuckooMap {
 
    public:
     Finding(Key* k, Value* v, CuckooMap* m, int32_t l)
-      : _key(k), _value(v), _map(m), _layer(l) {
-    }
+        : _key(k), _value(v), _map(m), _layer(l) {}
 
-    Finding()
-      : _key(nullptr), _value(nullptr), _map(nullptr), _layer(-1) {
-    }
-    
+    Finding() : _key(nullptr), _value(nullptr), _map(nullptr), _layer(-1) {}
+
     ~Finding() {
       if (_map != nullptr) {
         _map->release();
@@ -133,7 +123,7 @@ class CuckooMap {
       other._key = nullptr;
     }
 
-    Finding& operator=(Finding && other) {
+    Finding& operator=(Finding&& other) {
       std::cout << "move assign" << std::endl;
       if (_map != nullptr) {
         _map->release();
@@ -150,20 +140,14 @@ class CuckooMap {
 
     // Return 1 if something was found and 0 otherwise. If this returns 0,
     // then key() and value() are undefined.
-    int32_t found() {
-      return (_map != nullptr &&_key != nullptr) ? 1 : 0;
-    }
+    int32_t found() { return (_map != nullptr && _key != nullptr) ? 1 : 0; }
 
     // The following are only relevant for CuckooMultiMaps, we add the method
     // here to keep the API consistent.
- 
-    bool next() {
-      return false;
-    }
 
-    bool get(int32_t pos) {
-      return false;
-    }
+    bool next() { return false; }
+
+    bool get(int32_t pos) { return false; }
   };
 
   Finding lookup(Key const& k) {
@@ -206,7 +190,7 @@ class CuckooMap {
     // already a pair with the same key k in the table, in which case
     // the table is unchanged.
     MyMutexGuard guard(_mutex);
-    return innerInsert(k, v);
+    return innerInsert(k, v, nullptr);
   }
 
   bool insert(Key const& k, Value const* v, Finding& f) {
@@ -215,7 +199,7 @@ class CuckooMap {
       f._map = this;
       _mutex.lock();
     }
-    bool res = innerInsert(k, v);
+    bool res = innerInsert(k, v, nullptr);
     f._key = nullptr;
     return res;
   }
@@ -251,6 +235,7 @@ class CuckooMap {
 
  private:
   void innerLookup(Key const& k, Finding& f) {
+    char buffer[_valueSize];
     // f must be initialized with _key == nullptr
     for (int32_t layer = 0; static_cast<uint32_t>(layer) < _tables.size();
          ++layer) {
@@ -261,28 +246,43 @@ class CuckooMap {
         f._key = key;
         f._value = value;
         f._layer = layer;
+        if (layer != 0) {
+          Key kCopy = *key;
+          memcpy(buffer, value, _valueSize);
+          Value* vCopy = reinterpret_cast<Value*>(&buffer);
+
+          innerRemove(f);
+          innerInsert(kCopy, vCopy, &f);
+        }
         return;
       };
     }
   }
 
-  bool innerInsert(Key const& k, Value const* v) {
+  bool innerInsert(Key const& k, Value const* v, Finding* f) {
     // inserts a pair (k, v) into the table
     // returns true if the insertion took place and false if there was
     // already a pair with the same key k in the table, in which case
     // the table is unchanged.
-    
+
     Key kCopy = k;
+    Key originalKey = k;
     char buffer[_valueSize];
     memcpy(buffer, v, _valueSize);
     Value* vCopy = reinterpret_cast<Value*>(&buffer);
 
     int32_t layer = 0;
+    int res;
     while (static_cast<uint32_t>(layer) < _tables.size()) {
       Subtable& sub = *_tables[layer];
       for (int i = 0; i < 3; ++i) {
-        int res = sub.insert(kCopy, vCopy);
-        if (res < 0) {   // key is already in the table
+        if (f != nullptr && _compKey(originalKey, kCopy)) {
+          res = _tables[0]->insert(kCopy, vCopy, &(f->_key), &(f->_value));
+          f->_layer = layer;
+        } else {
+          res = sub.insert(kCopy, vCopy, nullptr, nullptr);
+        }
+        if (res < 0) {  // key is already in the table
           return false;
         } else if (res == 0) {
           ++_nrUsed;
@@ -301,14 +301,19 @@ class CuckooMap {
       delete t;
       throw;
     }
-    while (_tables.back()->insert(kCopy, vCopy) > 0) { }
+    while (res > 0) {
+      if (f != nullptr && _compKey(originalKey, kCopy)) {
+        res = _tables.back()->insert(kCopy, vCopy, &(f->_key), &(f->_value));
+        f->_layer = layer;
+      } else {
+        res = _tables.back()->insert(kCopy, vCopy, nullptr, nullptr);
+      }
+    }
     ++_nrUsed;
     return true;
   }
 
-  void release() {
-    _mutex.unlock();
-  }
+  void release() { _mutex.unlock(); }
 
   void innerRemove(Finding& f) {
     _tables[f._layer]->remove(f._key, f._value);
