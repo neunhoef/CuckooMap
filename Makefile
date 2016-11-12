@@ -1,4 +1,3 @@
-
 CXXFLAGS += -O3 -Wall -I./include -std=c++11
 
 headers=$(wildcard include/cuckoomap/*h)
