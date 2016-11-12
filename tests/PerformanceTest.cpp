@@ -7,10 +7,13 @@
 #include <unordered_map>
 #include <vector>
 
-#include "CuckooHelpers.h"
-#include "CuckooMap.h"
+#include <cuckoomap/CuckooHelpers.h>
+#include <cuckoomap/CuckooMap.h>
 
 #define MIN(a, b) (((a) <= (b)) ? (a) : (b))
+
+#define KEY_PAD 4
+#define VALUE_PAD 4
 
 struct Key {
   int k;

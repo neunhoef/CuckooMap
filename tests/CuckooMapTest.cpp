@@ -1,8 +1,7 @@
 #include <cassert>
 #include <iostream>
 
-#include "CuckooMap.h"
-#include "ShardedMap.h"
+#include <cuckoomap/CuckooMap.h>
 
 struct Key {
   int k;
@@ -15,7 +14,7 @@ namespace std {
 
 template <>
 struct equal_to<Key> {
-  bool operator()(Key const& a, Key const& b) const { return a.k == b.k; }
+  bool operator()(Key const& a, Key const& b) { return a.k == b.k; }
 };
 }
 
@@ -27,7 +26,7 @@ struct Value {
 };
 
 int main(int argc, char* argv[]) {
-  ShardedMap<CuckooMap<Key, Value>> m(16, 8);
+  CuckooMap<Key, Value> m(16);
   auto insert = [&]() -> void {
     for (int i = 1; i < 100; ++i) {
       Key k(i);
@@ -42,7 +41,7 @@ int main(int argc, char* argv[]) {
     }
   };
   auto show = [&]() {
-    for (int i = 99; i >= 1; --i) {
+    for (int i = 99; i > 0; --i) {
       Key k(i);
       auto f = m.lookup(k);
       if (f.found()) {

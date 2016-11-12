@@ -1,7 +1,7 @@
 #include <cassert>
 #include <iostream>
 
-#include "CuckooMultiMap.h"
+#include <cuckoomap/CuckooMultiMap.h>
 
 struct Key {
   int k;

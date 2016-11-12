@@ -1,8 +1,8 @@
 #include <iostream>
 #include <cassert>
 
-#include "CuckooMultiMap.h"
-#include "ShardedMap.h"
+#include <cuckoomap/CuckooMultiMap.h>
+#include <cuckoomap/ShardedMap.h>
 
 struct Key {
   int k;
