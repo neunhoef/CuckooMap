@@ -9,19 +9,19 @@
 
 // In the following template:
 //   Key is the key type, it must be copyable and movable, furthermore, Key
-//     must be default constructible (without arguments) as empty and 
+//     must be default constructible (without arguments) as empty and
 //     must have an empty() method to indicate that the instance is
 //     empty. If using fasthash64 on all bytes of the object is not
 //     a suitable hash function, one has to instanciate the template
 //     with two hash function types as 3rd and 4th argument. If
 //     std::equal_to<Key> is not implemented or does not behave
 //     correctly, one has to supply a comparison class as well.
-//   Value is the value type, it is not actually used anywhere in the 
+//   Value is the value type, it is not actually used anywhere in the
 //     template except as Value* for input and output of values. The
 //     template parameter basically only serves as a convenience to
 //     provide defaults for valueAlign and valueSize and to reduce
 //     casts. Values are passed in and out as a Value* to allow for
-//     runtime configuration of the byte size and alignment. Within the 
+//     runtime configuration of the byte size and alignment. Within the
 //     table no constructors or destructors or assignment operators are
 //     called for Value, the data is only copied with std::memcpy. So Value
 //     must only contain POD!
@@ -40,7 +40,7 @@ class CuckooMap {
 
  public:
   typedef Key KeyType;       // these are for ShardedMap
-  typedef Value ValueType;  
+  typedef Value ValueType;
   typedef HashKey1 HashKey1Type;
   typedef HashKey2 HashKey2Type;
   typedef CompKey CompKeyType;
@@ -106,7 +106,7 @@ class CuckooMap {
     Finding()
       : _key(nullptr), _value(nullptr), _map(nullptr), _layer(-1) {
     }
-    
+
     ~Finding() {
       if (_map != nullptr) {
         _map->release();
@@ -156,7 +156,7 @@ class CuckooMap {
 
     // The following are only relevant for CuckooMultiMaps, we add the method
     // here to keep the API consistent.
- 
+
     bool next() {
       return false;
     }
@@ -271,7 +271,7 @@ class CuckooMap {
     // returns true if the insertion took place and false if there was
     // already a pair with the same key k in the table, in which case
     // the table is unchanged.
-    
+
     Key kCopy = k;
     char buffer[_valueSize];
     memcpy(buffer, v, _valueSize);
