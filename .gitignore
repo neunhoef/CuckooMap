@@ -1,5 +1,7 @@
+CuckooFilterTest
 CuckooMapTest
 CuckooMultiMapTest
 InternalCuckooMapTest
+PerformanceTest
 ShardedCuckooMapTest
 ShardedCuckooMultiMapTest
