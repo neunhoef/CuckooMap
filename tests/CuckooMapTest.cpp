@@ -50,7 +50,8 @@ int main(int argc, char* argv[]) {
         assert(f.value()->v == i * i);
         assert(f.key()->k == i);
       } else {
-        std::cout << "Did not find key " << i << std::endl;
+        std::cout << "Did not find expected key " << i << std::endl;
+        assert(false);
       }
     }
   };
@@ -60,8 +61,23 @@ int main(int argc, char* argv[]) {
       if (m.remove(k)) {
         std::cout << "Removed key " << i << std::endl;
       } else {
-        std::cout << "Did not find key " << i << std::endl;
+        std::cout << "Did not find key " << i << " to remove" << std::endl;
         assert(false);
+      }
+    }
+  };
+  auto showSome = [&]() {
+    for (int i = 99; i > 0; --i) {
+      Key k(i);
+      auto f = m.lookup(k);
+      if (f.found()) {
+        std::cout << "Found key " << i << " with value " << f.value()->v
+                  << std::endl;
+        assert(f.value()->v == i * i);
+        assert(f.key()->k == i);
+      } else {
+        std::cout << "Did not find key " << i << std::endl;
+        assert(i < 50);
       }
     }
   };
@@ -69,5 +85,5 @@ int main(int argc, char* argv[]) {
   insert();
   show();
   remove();
-  show();
+  showSome();
 }

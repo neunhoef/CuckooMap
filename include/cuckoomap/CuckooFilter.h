@@ -40,23 +40,27 @@ class CuckooFilter {
     // Sort out offsets and alignments:
     _slotSize = sizeof(uint16_t);
 
+    // Inflate size so that we have some padding to avoid failure
+    size *= 2;
+
     // First find the smallest power of two that is not smaller than size:
     size /= SlotsPerBucket;
-    _size = 16;
-    _logSize = 4;
+    _size = 256;
+    _logSize = 8;
     while (_size < size) {
       _size <<= 1;
       _logSize += 1;
     }
     _sizeMask = _size - 1;
     _sizeShift = (64 - _logSize) / 2;
+    _maxRounds = _size;  // TODO: tune this
     _allocSize = _size * _slotSize * SlotsPerBucket +
                  64;  // give 64 bytes padding to enable 64-byte alignment
     _allocBase = new char[_allocSize];
 
     _base = reinterpret_cast<char*>(
         (reinterpret_cast<uintptr_t>(_allocBase) + 63) &
-        ~((uintptr_t)0x3fu));  // to actually implement the 64-btye alignment,
+        ~((uintptr_t)0x3fu));  // to actually implement the 64-byte alignment,
                                // shift base pointer within allocated space to
                                // 64-byte boundary
 
@@ -86,6 +90,7 @@ class CuckooFilter {
     // survive a mispredicted branch in the first loop. Is this sensible?
     uint64_t hash2 = _hasherPosFingerprint(pos1, fingerprint);
     uint64_t pos2 = hashToPos(hash2);
+
     for (uint64_t i = 0; i < SlotsPerBucket; ++i) {
       uint16_t* fTable = findSlot(pos1, i);
       if (fingerprint == *fTable) {
@@ -101,13 +106,14 @@ class CuckooFilter {
     return false;
   }
 
-  void insert(Key& k) {
+  bool insert(Key& k) {
     // insert the key k
     //
     // The inserted key will have its fingerprint input entered in the table. If
     // there is a collision and a fingerprint needs to be cuckooed, a certain
     // number of attempts will be made. After that, a given fingerprint may
-    // simply be expunged.
+    // simply be expunged. If something is expunged, the function will return
+    // false, otherwise true.
     uint16_t* fTable;
 
     uint64_t hash1 = _hasherKey(k);
@@ -124,7 +130,7 @@ class CuckooFilter {
       if (!*fTable) {
         *fTable = fingerprint;
         ++_nrUsed;
-        return;
+        return true;
       }
     }
     for (uint64_t i = 0; i < SlotsPerBucket; ++i) {
@@ -132,7 +138,7 @@ class CuckooFilter {
       if (!*fTable) {
         *fTable = fingerprint;
         ++_nrUsed;
-        return;
+        return true;
       }
     }
 
@@ -140,30 +146,33 @@ class CuckooFilter {
     if ((r & 1) != 0) {
       std::swap(pos1, pos2);
     }
-    for (unsigned attempt = 0; attempt < 3; attempt++) {
+    uint64_t i;
+    uint16_t fDummy;
+    for (unsigned attempt = 0; attempt < _maxRounds; attempt++) {
       std::swap(pos1, pos2);
       // Now expunge a random element from any of these slots:
-      uint64_t i = (r >> 1) & (SlotsPerBucket - 1);
+      r = pseudoRandomChoice();
+      i = r & (SlotsPerBucket - 1);
       // We expunge the element at position pos1 and slot i:
       fTable = findSlot(pos1, i);
-      uint16_t fDummy = *fTable;
+      fDummy = *fTable;
       *fTable = fingerprint;
       fingerprint = fDummy;
 
-      uint64_t hash2 = _hasherPosFingerprint(pos1, fingerprint);
-      uint64_t pos2 = hashToPos(hash2);
+      hash2 = _hasherPosFingerprint(pos1, fingerprint);
+      pos2 = hashToPos(hash2);
 
       for (uint64_t i = 0; i < SlotsPerBucket; ++i) {
         fTable = findSlot(pos2, i);
         if (!*fTable) {
           *fTable = fingerprint;
           ++_nrUsed;
-          return;
+          return true;
         }
       }
     }
 
-    return;
+    return false;
   }
 
   bool remove(Key const& k) {
@@ -182,6 +191,7 @@ class CuckooFilter {
       uint16_t* fTable = findSlot(pos1, i);
       if (fingerprint == *fTable) {
         *fTable = 0;
+        _nrUsed--;
         return true;
       }
     }
@@ -189,6 +199,7 @@ class CuckooFilter {
       uint16_t* fTable = findSlot(pos2, i);
       if (fingerprint == *fTable) {
         *fTable = 0;
+        _nrUsed--;
         return true;
       }
     }
@@ -221,12 +232,13 @@ class CuckooFilter {
   uint64_t hashToPos(uint64_t hash) { return (hash >> _sizeShift) & _sizeMask; }
 
   uint16_t hashToFingerprint(uint64_t hash) {
-    return (uint16_t)((hash ^ (hash >> 16) ^ (hash >> 32) ^ (hash >> 48)) &
-                      0xFFFF);
+    uint16_t fingerprint = (uint16_t)(
+        (hash ^ (hash >> 16) ^ (hash >> 32) ^ (hash >> 48)) & 0xFFFF);
+    return (fingerprint ? fingerprint : 1);
   }
 
   uint64_t _hasherPosFingerprint(uint64_t pos, uint16_t fingerprint) {
-    return (pos ^ _hasherShort(fingerprint));
+    return ((pos << _sizeShift) ^ _hasherShort(fingerprint));
   }
 
   uint8_t pseudoRandomChoice() {
@@ -248,6 +260,7 @@ class CuckooFilter {
   char* _base;          // pointer to allocated space, 64-byte aligned
   char* _allocBase;     // base of original allocation
   uint64_t _nrUsed;     // number of pairs stored in the table
+  unsigned _maxRounds;  // maximum number of cuckoo rounds on insertion
 
   HashKey _hasherKey;      // Instance to compute the first hash function
   HashShort _hasherShort;  // Instance to compute the second hash function
