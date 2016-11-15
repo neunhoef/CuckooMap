@@ -1,4 +1,5 @@
 #include <cassert>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -9,6 +10,7 @@
 
 #include <cuckoomap/CuckooHelpers.h>
 #include <cuckoomap/CuckooMap.h>
+#include <qdigest.h>
 
 #define MIN(a, b) (((a) <= (b)) ? (a) : (b))
 
@@ -82,20 +84,20 @@ class WeightedSelector {
 };
 
 typedef HashWithSeed<Key, 0xdeadbeefdeadbeefULL> KeyHash;
-typedef std::unordered_map<Key, Value*, KeyHash> unordered_map;
+typedef std::unordered_map<Key, Value*, KeyHash> unordered_map_for_key;
 
 class TestMap {
  private:
   int _useCuckoo;
   std::unique_ptr<CuckooMap<Key, Value>> _cuckoo;
-  std::unique_ptr<unordered_map> _unordered;
+  std::unique_ptr<unordered_map_for_key> _unordered;
 
  public:
   TestMap(int useCuckoo, size_t initialSize) : _useCuckoo(useCuckoo) {
     if (_useCuckoo) {
       _cuckoo.reset(new CuckooMap<Key, Value>(initialSize));
     } else {
-      _unordered.reset(new unordered_map(initialSize));
+      _unordered.reset(new unordered_map_for_key(initialSize));
     }
   }
   Value* lookup(Key const& k) {
@@ -171,6 +173,14 @@ int main(int argc, char* argv[]) {
 
   RandomNumber r(seed);
 
+  qdigest::QDigest digestI(10000);
+  qdigest::QDigest digestL(10000);
+  qdigest::QDigest digestR(10000);
+  auto overallStart = std::chrono::high_resolution_clock::now();
+  auto now = std::chrono::high_resolution_clock::now();
+  auto currentStart = std::chrono::high_resolution_clock::now();
+  auto currentFinish = std::chrono::high_resolution_clock::now();
+
   std::vector<double> opWeights;
   opWeights.push_back(pInsert);
   opWeights.push_back(pLookup);
@@ -198,6 +208,11 @@ int main(int argc, char* argv[]) {
   Value* v;
   for (unsigned i = 0; i < nOpCount; i++) {
     opCode = operations.next();
+    now = std::chrono::high_resolution_clock::now();
+    if (std::chrono::duration_cast<std::chrono::seconds>(now - overallStart)
+            .count() > 3600) {
+      break;
+    }
 
     switch (opCode) {
       case 0:
@@ -209,12 +224,18 @@ int main(int argc, char* argv[]) {
         current = maxElement++;
         k = new Key(current);
         v = new Value(current);
+        currentStart = std::chrono::high_resolution_clock::now();
         success = map.insert(*k, v);
+        currentFinish = std::chrono::high_resolution_clock::now();
         if (!success) {
           std::cout << "Failed to insert " << current << " with range ("
                     << minElement << ", " << maxElement << ")" << std::endl;
           exit(-1);
         } else {
+          digestI.insert(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                             currentFinish - currentStart)
+                             .count(),
+                         1);
           // std::cout << "Inserted " << current << std::endl;
         }
         delete k;
@@ -235,12 +256,13 @@ int main(int argc, char* argv[]) {
         }
 
         k = new Key(current);
+        currentStart = std::chrono::high_resolution_clock::now();
         v = map.lookup(current);
-        /*if (v == nullptr) {
-          std::cout << "Failed to find " << current << std::endl;
-        } else {
-          std::cout << "Found " << current << std::endl;
-        }*/
+        currentFinish = std::chrono::high_resolution_clock::now();
+        digestL.insert(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                           currentFinish - currentStart)
+                           .count(),
+                       1);
         delete k;
         break;
       case 2:
@@ -251,12 +273,18 @@ int main(int argc, char* argv[]) {
         current = working.next() ? minElement++ : --maxElement;
 
         k = new Key(current);
+        currentStart = std::chrono::high_resolution_clock::now();
         success = map.remove(current);
+        currentFinish = std::chrono::high_resolution_clock::now();
         if (!success) {
           std::cout << "Failed to remove " << current << " with range ("
                     << minElement << ", " << maxElement << ")" << std::endl;
           exit(-1);
         } else {
+          digestR.insert(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                             currentFinish - currentStart)
+                             .count(),
+                         1);
           // std::cout << "Removed " << current << std::endl;
         }
         delete k;
@@ -266,7 +294,17 @@ int main(int argc, char* argv[]) {
     }
   }
 
-  // std::cout << "Done." << std::endl;
+  std::cout << "Insert: [" << digestI.percentile(0.500) << ", "
+            << digestI.percentile(0.950) << ", " << digestI.percentile(0.990)
+            << ", " << digestI.percentile(0.999) << "]" << std::endl;
+  std::cout << "Lookup: [" << digestL.percentile(0.500) << ", "
+            << digestL.percentile(0.950) << ", " << digestL.percentile(0.990)
+            << ", " << digestL.percentile(0.999) << "]" << std::endl;
+  std::cout << "Remove: [" << digestR.percentile(0.500) << ", "
+            << digestR.percentile(0.950) << ", " << digestR.percentile(0.990)
+            << ", " << digestR.percentile(0.999) << "]" << std::endl;
+
+  std::cout << "Done." << std::endl;
 
   exit(0);
 }

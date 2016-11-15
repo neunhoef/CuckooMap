@@ -4,12 +4,8 @@ project(CuckooMap)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 11)
 
-add_library (tdigest
-    3rdParty/t-digest/src/tdigest/avltree.cpp
-    3rdParty/t-digest/src/tdigest/tdigest.cpp
-)
-target_include_directories(tdigest PUBLIC 3rdParty/t-digest/src/tdigest/)
-
+add_library(qdigest INTERFACE)
+target_include_directories(qdigest INTERFACE 3rdParty/q-digest)
 
 #list(APPEND CMAKE_CXX_FLAGS "-fprofile-arcs -ftest-coverage -DNDEBUG ${CMAKE_CXX_FLAGS}")
 #list(APPEND CMAKE_EXE_LINKER_FLAGS "-O0 -g -fprofile-arcs -ftest-coverage -DNDEBUG ${CMAKE_EXE_LINKER_FLAGS}")
@@ -51,4 +47,4 @@ target_link_libraries(ShardedCuckooMultiMapTest PRIVATE cuckoo)
 add_executable(PerformanceTest
     tests/PerformanceTest.cpp
 )
-target_link_libraries(PerformanceTest PRIVATE cuckoo tdigest)
+target_link_libraries(PerformanceTest PRIVATE cuckoo qdigest)
