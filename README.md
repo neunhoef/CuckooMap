@@ -119,7 +119,7 @@ make
 cd performance
 ./RunBattery.sh
 ```
-The results will then be output to a GitHub-flavored markdown file located at `{BUILD_DIR}/performance/results.md`.
+The results will then be output to a GitHub-flavored markdown file located at `{BUILD_DIR}/performance/results.md`. For a given result set, we display the test parameters as well as operation latencies at various percentiles for both `std::unordered_map` and `CuckooMap`. A latency column is labeled as `UM Xp` to denoted the Xth percentile for `std::unordered_map` and `CM Yp` to denote the Yth percentile for `CuckooMap`.
 
 In order to change which tests are run, one needs to edit `/performance/battery.csv`. This is a CSV file where each line contains the parameters necessary to execute `PerformanceTest`, omitting `useCuckoo` and `seed` (these will automatically be set by `/performance/RunBattery.sh` as necessary).
 
