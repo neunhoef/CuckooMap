@@ -12,7 +12,7 @@ There are altogether four classes with different properties, all with
 the same interface:
 
   - `CuckooMap`
-    
+
       - cascade of `InternalCuckooMap`s, each constant size
       - sizes grow exponentially
       - hot set is heuristically kept in the early, smaller tables
@@ -87,3 +87,42 @@ object:
 
 `Finding` objects cannot be copied but can be moved.
 
+Performance Testing
+-------------------
+
+We include a performance testing tool which runs a configurable randomized workload and can compare the performance of `CuckooMap` against that of `std::unordered_map`. The `PerformanceTest` executable takes 11 parameters as follows:
+
+  - `useCuckoo`: Set to 0 to use `std::unordered_map` and 1 to use `CuckooMap`
+  - `nOpCount`: The target number of operations to run in total; Integer, 0 < `opCount`
+  - `nInitialSize`: The initial size of the table; Integer, 0 < `nInitialSize`
+  - `nMaxSize`: The maximum number of elements in the set at any given time; Integer, 0 < `nMaxSize`
+  - `nWorking`: The size of the 'hot' set; Integer, 0 < `nWorking`
+  - `pInsert`: The probability that the chosen operation will be an `insert`; Double, 0 <= `pInsert` <= 1
+  - `pLookup`: The probability that the chosen operation will be a `lookup`; Double, 0 <= `pLookup` <= 1
+  - `pRemove`: The probability that the chosen operation will be a `remove`; Double, 0 <= `pRemove` <= 1
+  - `pWorking`: The probability that a `lookup` or `remove` operation will be executed on an element in the 'hot' set; Double, 0 <= `pWorking` <= 1
+  - `pMiss`: The probability that a `lookup` operation will search for an item not in the table; Double, 0 <= `pMiss` <= 1
+  - `seed`: The seed for the PRNG; Integer, 0 < `seed` < 2^64
+
+Proper usage then is as follows:
+```
+PerformanceTest [useCuckoo] [nOpCount] [nInitialSize] [nMaxSize] [nWorking] [pInsert] [pLookup] [pRemove] [pWorking] [pMiss] [seed]
+```  
+
+In order to generate readable results, one should use the scripts included in `/performance`. Here we provide tools which should make running a variety of comparison tests much easier. To run the tests, do the following:
+```
+mkdir {BUILD_DIR}
+cd {BUILD_DIR}
+cmake {SRC_DIR}
+make
+
+cd performance
+./RunBattery.sh
+```
+The results will then be output to a GitHub-flavored markdown file located at `{BUILD_DIR}/performance/results.md`.
+
+In order to change which tests are run, one needs to edit `/performance/battery.csv`. This is a CSV file where each line contains the parameters necessary to execute `PerformanceTest`, omitting `useCuckoo` and `seed` (these will automatically be set by `/performance/RunBattery.sh` as necessary).
+
+When making changes to the code, we suggest running the same battery of tests against the existing version and the updated one and comparing the results (`{SRC_DIR}/performance/results.md` vs. `{BUILD_DIR}/performance/results.md`). When commiting changes, please make sure to check in the new performance results as well.
+
+You can find the performance results for the current version [here](performance/results.md).

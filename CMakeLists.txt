@@ -48,3 +48,7 @@ add_executable(PerformanceTest
     tests/PerformanceTest.cpp
 )
 target_link_libraries(PerformanceTest PRIVATE cuckoo qdigest)
+
+add_custom_command(TARGET PerformanceTest PRE_BUILD
+                   COMMAND ${CMAKE_COMMAND} -E copy_directory
+                       ${CMAKE_SOURCE_DIR}/performance $<TARGET_FILE_DIR:PerformanceTest>/performance)

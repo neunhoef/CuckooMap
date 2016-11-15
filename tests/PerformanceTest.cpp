@@ -294,17 +294,14 @@ int main(int argc, char* argv[]) {
     }
   }
 
-  std::cout << "Insert: [" << digestI.percentile(0.500) << ", "
-            << digestI.percentile(0.950) << ", " << digestI.percentile(0.990)
-            << ", " << digestI.percentile(0.999) << "]" << std::endl;
-  std::cout << "Lookup: [" << digestL.percentile(0.500) << ", "
-            << digestL.percentile(0.950) << ", " << digestL.percentile(0.990)
-            << ", " << digestL.percentile(0.999) << "]" << std::endl;
-  std::cout << "Remove: [" << digestR.percentile(0.500) << ", "
-            << digestR.percentile(0.950) << ", " << digestR.percentile(0.990)
-            << ", " << digestR.percentile(0.999) << "]" << std::endl;
-
-  std::cout << "Done." << std::endl;
+  std::cout << digestI.percentile(0.500) << "," << digestI.percentile(0.950)
+            << "," << digestI.percentile(0.990) << ","
+            << digestI.percentile(0.999) << "," << digestL.percentile(0.500)
+            << "," << digestL.percentile(0.950) << ","
+            << digestL.percentile(0.990) << "," << digestL.percentile(0.999)
+            << "," << digestR.percentile(0.500) << ","
+            << digestR.percentile(0.950) << "," << digestR.percentile(0.990)
+            << "," << digestR.percentile(0.999) << std::endl;
 
   exit(0);
 }
