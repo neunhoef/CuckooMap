@@ -1,0 +1,3 @@
+[submodule "3rdParty/qdigest"]
+	path = 3rdParty/qdigest
+	url = git@github.com:danielhlarkin/q-digest.git
