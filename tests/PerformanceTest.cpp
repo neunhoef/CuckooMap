@@ -188,8 +188,8 @@ int main(int argc, char* argv[]) {
   WeightedSelector miss(seed, missWeights);
 
   TestMap map(useCuckoo, nInitialSize);
-  unsigned minElement = 0;
-  unsigned maxElement = 0;
+  unsigned minElement = 1;
+  unsigned maxElement = 1;
   unsigned opCode;
   unsigned current;
   unsigned barrier, nHot, nCold;
@@ -211,7 +211,8 @@ int main(int argc, char* argv[]) {
         v = new Value(current);
         success = map.insert(*k, v);
         if (!success) {
-          std::cout << "Failed to insert " << current << std::endl;
+          std::cout << "Failed to insert " << current << " with range ("
+                    << minElement << ", " << maxElement << ")" << std::endl;
           exit(-1);
         } else {
           // std::cout << "Inserted " << current << std::endl;
@@ -247,12 +248,13 @@ int main(int argc, char* argv[]) {
         if (minElement >= maxElement) {
           break;
         }
-        current = working.next() ? minElement++ : maxElement--;
+        current = working.next() ? minElement++ : --maxElement;
 
         k = new Key(current);
         success = map.remove(current);
         if (!success) {
-          std::cout << "Failed to remove " << current << std::endl;
+          std::cout << "Failed to remove " << current << " with range ("
+                    << minElement << ", " << maxElement << ")" << std::endl;
           exit(-1);
         } else {
           // std::cout << "Removed " << current << std::endl;
