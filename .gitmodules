@@ -1,0 +1,3 @@
+[submodule "3rdParty/t-digest"]
+	path = 3rdParty/t-digest
+	url = git@github.com:gpichot/cpp-tdigest.git
