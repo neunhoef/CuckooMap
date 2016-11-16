@@ -156,6 +156,10 @@ int main(int argc, char* argv[]) {
   double pMiss = atof(argv[10]);
   unsigned seed = atoi(argv[11]);
 
+  unsigned nChunkSize = 1000000;  // will keep only the most recent X opcounts
+                                  // to calculate percentiles, where nChunkSize
+                                  // <= X <= 2*nChunkSize
+
   if (nInitialSize > nMaxSize || nWorking > nMaxSize) {
     std::cerr << "Invalid initial/total/working numbers." << std::endl;
     exit(-1);
@@ -173,9 +177,12 @@ int main(int argc, char* argv[]) {
 
   RandomNumber r(seed);
 
-  qdigest::QDigest digestI(10000);
-  qdigest::QDigest digestL(10000);
-  qdigest::QDigest digestR(10000);
+  qdigest::QDigest* oldDigestI = nullptr;
+  qdigest::QDigest* oldDigestL = nullptr;
+  qdigest::QDigest* oldDigestR = nullptr;
+  qdigest::QDigest* digestI = new qdigest::QDigest(10000);
+  qdigest::QDigest* digestL = new qdigest::QDigest(10000);
+  qdigest::QDigest* digestR = new qdigest::QDigest(10000);
   auto overallStart = std::chrono::high_resolution_clock::now();
   auto now = std::chrono::high_resolution_clock::now();
   auto currentStart = std::chrono::high_resolution_clock::now();
@@ -206,102 +213,131 @@ int main(int argc, char* argv[]) {
   bool success;
   Key* k;
   Value* v;
-  for (unsigned i = 0; i < nOpCount; i++) {
-    opCode = operations.next();
-    now = std::chrono::high_resolution_clock::now();
-    if (std::chrono::duration_cast<std::chrono::seconds>(now - overallStart)
-            .count() > 3600) {
-      break;
-    }
+  for (unsigned i = 0; i < (nOpCount / nChunkSize); i++) {
+    if (oldDigestI != nullptr) {
+      delete oldDigestI;
+      delete oldDigestL;
+      delete oldDigestR;
+    };
+    oldDigestI = digestI;
+    oldDigestL = digestL;
+    oldDigestR = digestR;
+    digestI = new qdigest::QDigest(10000);
+    digestL = new qdigest::QDigest(10000);
+    digestR = new qdigest::QDigest(10000);
 
-    switch (opCode) {
-      case 0:
-        // insert if allowed
-        if (maxElement - minElement >= nMaxSize) {
+    for (unsigned j = 0; j < nChunkSize; j++) {
+      opCode = operations.next();
+      now = std::chrono::high_resolution_clock::now();
+      if (std::chrono::duration_cast<std::chrono::seconds>(now - overallStart)
+              .count() > 3600) {
+        break;
+      }
+
+      switch (opCode) {
+        case 0:
+          // insert if allowed
+          if (maxElement - minElement >= nMaxSize) {
+            break;
+          }
+
+          current = maxElement++;
+          k = new Key(current);
+          v = new Value(current);
+          currentStart = std::chrono::high_resolution_clock::now();
+          success = map.insert(*k, v);
+          currentFinish = std::chrono::high_resolution_clock::now();
+          if (!success) {
+            std::cout << "Failed to insert " << current << " with range ("
+                      << minElement << ", " << maxElement << ")" << std::endl;
+            exit(-1);
+          } else {
+            digestI->insert(
+                std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    currentFinish - currentStart)
+                    .count(),
+                1);
+            // std::cout << "Inserted " << current << std::endl;
+          }
+          delete k;
+          delete v;
           break;
-        }
+        case 1:
+          // lookup
+          barrier = MIN(minElement + nWorking, maxElement);
+          nHot = barrier - minElement;
+          nCold = maxElement - barrier;
+          if (miss.next()) {
+            current = maxElement + r.next();
+          } else if (working.next()) {
+            current = minElement + r.nextInRange(nHot);
+          } else {
+            current = nCold ? barrier + r.nextInRange(nCold)
+                            : minElement + r.nextInRange(nHot);
+          }
 
-        current = maxElement++;
-        k = new Key(current);
-        v = new Value(current);
-        currentStart = std::chrono::high_resolution_clock::now();
-        success = map.insert(*k, v);
-        currentFinish = std::chrono::high_resolution_clock::now();
-        if (!success) {
-          std::cout << "Failed to insert " << current << " with range ("
-                    << minElement << ", " << maxElement << ")" << std::endl;
-          exit(-1);
-        } else {
-          digestI.insert(std::chrono::duration_cast<std::chrono::nanoseconds>(
-                             currentFinish - currentStart)
-                             .count(),
-                         1);
-          // std::cout << "Inserted " << current << std::endl;
-        }
-        delete k;
-        delete v;
-        break;
-      case 1:
-        // lookup
-        barrier = MIN(minElement + nWorking, maxElement);
-        nHot = barrier - minElement;
-        nCold = maxElement - barrier;
-        if (miss.next()) {
-          current = maxElement + r.next();
-        } else if (working.next()) {
-          current = minElement + r.nextInRange(nHot);
-        } else {
-          current = nCold ? barrier + r.nextInRange(nCold)
-                          : minElement + r.nextInRange(nHot);
-        }
-
-        k = new Key(current);
-        currentStart = std::chrono::high_resolution_clock::now();
-        v = map.lookup(current);
-        currentFinish = std::chrono::high_resolution_clock::now();
-        digestL.insert(std::chrono::duration_cast<std::chrono::nanoseconds>(
-                           currentFinish - currentStart)
-                           .count(),
-                       1);
-        delete k;
-        break;
-      case 2:
-        // remove if allowed
-        if (minElement >= maxElement) {
+          k = new Key(current);
+          currentStart = std::chrono::high_resolution_clock::now();
+          v = map.lookup(current);
+          currentFinish = std::chrono::high_resolution_clock::now();
+          digestL->insert(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                              currentFinish - currentStart)
+                              .count(),
+                          1);
+          delete k;
           break;
-        }
-        current = working.next() ? minElement++ : --maxElement;
+        case 2:
+          // remove if allowed
+          if (minElement >= maxElement) {
+            break;
+          }
+          current = working.next() ? minElement++ : --maxElement;
 
-        k = new Key(current);
-        currentStart = std::chrono::high_resolution_clock::now();
-        success = map.remove(current);
-        currentFinish = std::chrono::high_resolution_clock::now();
-        if (!success) {
-          std::cout << "Failed to remove " << current << " with range ("
-                    << minElement << ", " << maxElement << ")" << std::endl;
-          exit(-1);
-        } else {
-          digestR.insert(std::chrono::duration_cast<std::chrono::nanoseconds>(
-                             currentFinish - currentStart)
-                             .count(),
-                         1);
-          // std::cout << "Removed " << current << std::endl;
-        }
-        delete k;
-        break;
-      default:
-        break;
+          k = new Key(current);
+          currentStart = std::chrono::high_resolution_clock::now();
+          success = map.remove(current);
+          currentFinish = std::chrono::high_resolution_clock::now();
+          if (!success) {
+            std::cout << "Failed to remove " << current << " with range ("
+                      << minElement << ", " << maxElement << ")" << std::endl;
+            exit(-1);
+          } else {
+            digestR->insert(
+                std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    currentFinish - currentStart)
+                    .count(),
+                1);
+            // std::cout << "Removed " << current << std::endl;
+          }
+          delete k;
+          break;
+        default:
+          break;
+      }
     }
   }
 
-  std::cout << digestI.percentile(0.500) << "," << digestI.percentile(0.950)
-            << "," << digestI.percentile(0.990) << ","
-            << digestI.percentile(0.999) << "," << digestL.percentile(0.500)
-            << "," << digestL.percentile(0.950) << ","
-            << digestL.percentile(0.990) << "," << digestL.percentile(0.999)
-            << "," << digestR.percentile(0.500) << ","
-            << digestR.percentile(0.950) << "," << digestR.percentile(0.990)
-            << "," << digestR.percentile(0.999) << std::endl;
+  if (oldDigestI != nullptr) {
+    digestI->merge(*oldDigestI);
+    digestL->merge(*oldDigestL);
+    digestR->merge(*oldDigestR);
+    delete oldDigestI;
+    delete oldDigestL;
+    delete oldDigestR;
+  }
+
+  std::cout << digestI->percentile(0.500) << "," << digestI->percentile(0.950)
+            << "," << digestI->percentile(0.990) << ","
+            << digestI->percentile(0.999) << "," << digestL->percentile(0.500)
+            << "," << digestL->percentile(0.950) << ","
+            << digestL->percentile(0.990) << "," << digestL->percentile(0.999)
+            << "," << digestR->percentile(0.500) << ","
+            << digestR->percentile(0.950) << "," << digestR->percentile(0.990)
+            << "," << digestR->percentile(0.999) << std::endl;
+
+  delete digestI;
+  delete digestL;
+  delete digestR;
 
   exit(0);
 }
