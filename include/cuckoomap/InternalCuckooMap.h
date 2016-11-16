@@ -1,8 +1,20 @@
 #ifndef INTERNAL_CUCKOO_MAP_H
 #define INTERNAL_CUCKOO_MAP_H 1
 
+#include <fcntl.h>
+#include <stdio.h>
+#include <sys/mman.h>
+#include <unistd.h>
 #include <cstring>
 #include <iostream>
+
+#ifndef CUCKOO_MAP_ANON
+#ifdef MAP_ANONYMOUS
+#define CUCKOO_MAP_ANON MAP_ANONYMOUS
+#elif MAP_ANON
+#define CUCKOO_MAP_ANON MAP_ANON
+#endif
+#endif
 
 #include "CuckooFilter.h"
 #include "CuckooHelpers.h"
@@ -68,6 +80,39 @@ class InternalCuckooMap {
     _sizeShift = (64 - _logSize) / 2;
     _allocSize = _size * _slotSize * SlotsPerBucket +
                  64;  // give 64 bytes padding to enable 64-byte alignment
+
+    // MMAP ALLOCATION
+    char* namePicked = std::tmpnam(_tmpFileName);
+    if (namePicked == nullptr) {
+      throw;
+    }
+    _tmpFile = open(_tmpFileName, O_RDWR | O_CREAT | O_TRUNC, (mode_t)0600);
+    if (_tmpFile == -1) {
+      throw;
+    }
+    try {
+      int result = lseek(_tmpFile, _allocSize - 1, SEEK_SET);
+      if (result == -1) {
+        throw;
+      }
+      result = write(_tmpFile, "", 1);  // make the file a certain size
+      if (result == -1) {
+        throw;
+      }
+
+      _allocBase = mmap(nullptr, _allocSize, PROT_READ | PROT_WRITE, MAP_SHARED,
+                        _tmpFile, 0);
+      if (_allocBase == MAP_FAILED) {
+        std::cout << "MAP_FAILED in table" << std::endl;
+        throw;
+      }
+    } catch (...) {
+      close(_tmpFile);
+      std::remove(_tmpFileName);
+    }
+    _base = reinterpret_cast<char*>(_allocBase);
+
+    /* REGULAR MEMORY ALLOCATION
     _allocBase = new char[_allocSize];
 
     _base = reinterpret_cast<char*>(
@@ -75,12 +120,19 @@ class InternalCuckooMap {
         ~((uintptr_t)0x3fu));  // to actually implement the 64-byte alignment,
                                // shift base pointer within allocated space to
                                // 64-byte boundary
+    */
 
     try {
       _theBuffer = new char[_valueSize];
       _filter = new CuckooFilter<Key, HashKey1>(_size * SlotsPerBucket);
     } catch (...) {
+      // MMAP ALLOCATION
+      munmap(_allocBase, _allocSize);
+      close(_tmpFile);
+      std::remove(_tmpFileName);
+      /* REGULAR MEMORY ALLOCATION
       delete[] _allocBase;
+      */
       throw;
     }
 
@@ -103,7 +155,13 @@ class InternalCuckooMap {
         k->~Key();
       }
     }
+    // MMAP ALLOCATION
+    munmap(_allocBase, _allocSize);
+    close(_tmpFile);
+    std::remove(_tmpFileName);
+    /* REGULAR MEMORY ALLOCATION
     delete[] _allocBase;
+    */
     delete[] _theBuffer;
     delete _filter;
   }
@@ -307,7 +365,13 @@ class InternalCuckooMap {
 
   bool check(void* p, bool isKey) {
     char* address = reinterpret_cast<char*>(p);
+    /* REGULAR MEMORY ALLOCATION
     if ((address - _allocBase) + (isKey ? _slotSize : _valueSize) - 1 >=
+        _allocSize) {
+    */
+    // MMAP ALLOCATION
+    if ((address - reinterpret_cast<char*>(_allocBase)) +
+            (isKey ? _slotSize : _valueSize) - 1 >=
         _allocSize) {
       std::cout << "ALARM" << std::endl;
       return true;
@@ -337,9 +401,14 @@ class InternalCuckooMap {
   uint64_t _allocSize;  // number of allocated bytes,
                         // == _size * SlotsPerBucket * _slotSize + 64
   char* _base;          // pointer to allocated space, 64-byte aligned
-  char* _allocBase;     // base of original allocation
-  char* _theBuffer;     // pointer to an area of size _valueSize for value swap
-  uint64_t _nrUsed;     // number of pairs stored in the table
+  void* _allocBase;     // MMAP ALLOCATION
+  char _tmpFileName[L_tmpnam + 1];
+  int _tmpFile;
+  /* REGULAR MEMORY ALLOCATION
+  char* _allocBase;  // base of original allocation
+  */
+  char* _theBuffer;  // pointer to an area of size _valueSize for value swap
+  uint64_t _nrUsed;  // number of pairs stored in the table
   CuckooFilter<Key, HashKey1>* _filter;  // CuckooFilter instance
 
   HashKey1 _hasher1;  // Instance to compute the first hash function

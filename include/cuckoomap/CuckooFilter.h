@@ -1,7 +1,21 @@
 #ifndef CUCKOO_FILTER_H
 #define CUCKOO_FILTER_H 1
 
+#include <fcntl.h>
+#include <stdio.h>
+#include <sys/mman.h>
+#include <unistd.h>
+
+#ifndef CUCKOO_MAP_ANON
+#ifdef MAP_ANONYMOUS
+#define CUCKOO_MAP_ANON MAP_ANONYMOUS
+#elif MAP_ANON
+#define CUCKOO_MAP_ANON MAP_ANON
+#endif
+#endif
+
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <iostream>
 
@@ -56,6 +70,38 @@ class CuckooFilter {
     _maxRounds = _size;  // TODO: tune this
     _allocSize = _size * _slotSize * SlotsPerBucket +
                  64;  // give 64 bytes padding to enable 64-byte alignment
+
+    char* namePicked = std::tmpnam(_tmpFileName);
+    if (namePicked == nullptr) {
+      throw;
+    }
+    _tmpFile = open(_tmpFileName, O_RDWR | O_CREAT | O_TRUNC, (mode_t)0600);
+    if (_tmpFile == -1) {
+      throw;
+    }
+    try {
+      int result = lseek(_tmpFile, _allocSize - 1, SEEK_SET);
+      if (result == -1) {
+        throw;
+      }
+      result = write(_tmpFile, "", 1);  // make the file a certain size
+      if (result == -1) {
+        throw;
+      }
+
+      _allocBase = mmap(nullptr, _allocSize, PROT_READ | PROT_WRITE, MAP_SHARED,
+                        _tmpFile, 0);
+      if (_allocBase == MAP_FAILED) {
+        std::cout << "MAP_FAILED in filter" << std::endl;
+        throw;
+      }
+    } catch (...) {
+      close(_tmpFile);
+      std::remove(_tmpFileName);
+    }
+    _base = reinterpret_cast<char*>(_allocBase);
+
+    /* REGULAR MEMORY ALLOCATION
     _allocBase = new char[_allocSize];
 
     _base = reinterpret_cast<char*>(
@@ -63,6 +109,7 @@ class CuckooFilter {
         ~((uintptr_t)0x3fu));  // to actually implement the 64-byte alignment,
                                // shift base pointer within allocated space to
                                // 64-byte boundary
+    */
 
     // Now initialize all slots in all buckets with zero data:
     for (uint32_t b = 0; b < _size; ++b) {
@@ -73,7 +120,15 @@ class CuckooFilter {
     }
   }
 
-  ~CuckooFilter() { delete[] _allocBase; }
+  ~CuckooFilter() {
+    // MMAP ALLOCATION
+    munmap(_allocBase, _allocSize);
+    close(_tmpFile);
+    std::remove(_tmpFileName);
+    /* REGULAR MEMORY ALLOCATION
+    delete[] _allocBase;
+    */
+  }
 
   CuckooFilter(CuckooFilter const&) = delete;
   CuckooFilter(CuckooFilter&&) = delete;
@@ -216,17 +271,7 @@ class CuckooFilter {
   uint16_t* findSlot(uint64_t pos, uint64_t slot) {
     char* address = _base + _slotSize * (pos * SlotsPerBucket + slot);
     auto ret = reinterpret_cast<uint16_t*>(address);
-    check(ret, true);
     return ret;
-  }
-
-  bool check(void* p, bool isKey) {
-    char* address = reinterpret_cast<char*>(p);
-    if ((address - _allocBase) + _slotSize - 1 >= _allocSize) {
-      std::cout << "ALARM" << std::endl;
-      return true;
-    }
-    return false;
   }
 
   uint64_t hashToPos(uint64_t hash) { return (hash >> _sizeShift) & _sizeMask; }
@@ -258,7 +303,12 @@ class CuckooFilter {
   uint64_t _allocSize;  // number of allocated bytes,
                         // == _size * SlotsPerBucket * _slotSize + 64
   char* _base;          // pointer to allocated space, 64-byte aligned
+  void* _allocBase;     // MMAP ALLOCATION
+  char _tmpFileName[L_tmpnam + 1];
+  int _tmpFile;
+  /* REGULAR MEMORY ALLOCATION
   char* _allocBase;     // base of original allocation
+  */
   uint64_t _nrUsed;     // number of pairs stored in the table
   unsigned _maxRounds;  // maximum number of cuckoo rounds on insertion
 

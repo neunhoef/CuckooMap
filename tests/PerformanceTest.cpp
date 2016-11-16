@@ -42,16 +42,16 @@ struct equal_to<Key> {
 
 class RandomNumber {
  private:
-  unsigned _current;
+  uint64_t _current;
 
  public:
-  RandomNumber(unsigned seed) : _current(seed) {}
-  unsigned next() {
+  RandomNumber(uint64_t seed) : _current(seed) {}
+  uint64_t next() {
     // https://en.wikipedia.org/wiki/Linear_congruential_generator
     _current = (48271 * _current % 2147483647);
     return _current;
   }
-  unsigned nextInRange(int range) {
+  uint64_t nextInRange(int range) {
     if (range == 0) {
       return 0;
     }
@@ -63,19 +63,19 @@ class RandomNumber {
 class WeightedSelector {
  private:
   RandomNumber _r;
-  std::vector<unsigned> _cutoffs;
+  std::vector<uint64_t> _cutoffs;
 
  public:
-  WeightedSelector(unsigned seed, std::vector<double> weights) : _r(seed) {
+  WeightedSelector(uint64_t seed, std::vector<double> weights) : _r(seed) {
     double totalWeight = 0.0;
-    for (unsigned i = 0; i < weights.size(); i++) {
+    for (uint64_t i = 0; i < weights.size(); i++) {
       totalWeight += weights[i];
       _cutoffs.push_back(std::ceil(totalWeight * 2147483647.0));
     }
   }
-  unsigned next() {
-    unsigned sample = _r.next();
-    unsigned i = 0;
+  uint64_t next() {
+    uint64_t sample = _r.next();
+    uint64_t i = 0;
     for (; i < _cutoffs.size(); i++) {
       if (sample < _cutoffs[i]) break;
     }
@@ -144,19 +144,19 @@ int main(int argc, char* argv[]) {
     exit(-1);
   }
 
-  unsigned useCuckoo = atoi(argv[1]);
-  unsigned nOpCount = atoi(argv[2]);
-  unsigned nInitialSize = atoi(argv[3]);
-  unsigned nMaxSize = atoi(argv[4]);
-  unsigned nWorking = atoi(argv[5]);
+  uint64_t useCuckoo = atoll(argv[1]);
+  uint64_t nOpCount = atoll(argv[2]);
+  uint64_t nInitialSize = atoll(argv[3]);
+  uint64_t nMaxSize = atoll(argv[4]);
+  uint64_t nWorking = atoll(argv[5]);
   double pInsert = atof(argv[6]);
   double pLookup = atof(argv[7]);
   double pRemove = atof(argv[8]);
   double pWorking = atof(argv[9]);
   double pMiss = atof(argv[10]);
-  unsigned seed = atoi(argv[11]);
+  uint64_t seed = atoll(argv[11]);
 
-  unsigned nChunkSize = 1000000;  // will keep only the most recent X opcounts
+  uint64_t nChunkSize = 1000000;  // will keep only the most recent X opcounts
                                   // to calculate percentiles, where nChunkSize
                                   // <= X <= 2*nChunkSize
 
@@ -205,15 +205,15 @@ int main(int argc, char* argv[]) {
   WeightedSelector miss(seed, missWeights);
 
   TestMap map(useCuckoo, nInitialSize);
-  unsigned minElement = 1;
-  unsigned maxElement = 1;
-  unsigned opCode;
-  unsigned current;
-  unsigned barrier, nHot, nCold;
+  uint64_t minElement = 1;
+  uint64_t maxElement = 1;
+  uint64_t opCode;
+  uint64_t current;
+  uint64_t barrier, nHot, nCold;
   bool success;
   Key* k;
   Value* v;
-  for (unsigned i = 0; i < (nOpCount / nChunkSize); i++) {
+  for (uint64_t i = 0; i < (nOpCount / nChunkSize); i++) {
     if (oldDigestI != nullptr) {
       delete oldDigestI;
       delete oldDigestL;
@@ -226,7 +226,7 @@ int main(int argc, char* argv[]) {
     digestL = new qdigest::QDigest(10000);
     digestR = new qdigest::QDigest(10000);
 
-    for (unsigned j = 0; j < nChunkSize; j++) {
+    for (uint64_t j = 0; j < nChunkSize; j++) {
       opCode = operations.next();
       now = std::chrono::high_resolution_clock::now();
       if (std::chrono::duration_cast<std::chrono::seconds>(now - overallStart)
