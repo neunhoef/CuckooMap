@@ -124,7 +124,8 @@ class InternalCuckooMap {
 
     try {
       _theBuffer = new char[_valueSize];
-      _filter = new CuckooFilter<Key, HashKey1>(_size * SlotsPerBucket);
+      _filter =
+          new CuckooFilter<Key, HashKey1, HashKey2>(_size * SlotsPerBucket);
     } catch (...) {
       // MMAP ALLOCATION
       munmap(_allocBase, _allocSize);
@@ -409,7 +410,7 @@ class InternalCuckooMap {
   */
   char* _theBuffer;  // pointer to an area of size _valueSize for value swap
   uint64_t _nrUsed;  // number of pairs stored in the table
-  CuckooFilter<Key, HashKey1>* _filter;  // CuckooFilter instance
+  CuckooFilter<Key, HashKey1, HashKey2>* _filter;  // CuckooFilter instance
 
   HashKey1 _hasher1;  // Instance to compute the first hash function
   HashKey2 _hasher2;  // Instance to compute the second hash function

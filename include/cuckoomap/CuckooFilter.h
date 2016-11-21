@@ -43,7 +43,8 @@
 // This class is not thread-safe!
 
 template <class Key, class HashKey = HashWithSeed<Key, 0xdeadbeefdeadbeefULL>,
-          class HashShort = HashWithSeed<uint16_t, 0xabcdefabcdef1234ULL>,
+          class Fingerprint = HashWithSeed<Key, 0xabcdefabcdef1234ULL>,
+          class HashShort = HashWithSeed<uint16_t, 0xfedcbafedcba4321ULL>,
           class CompKey = std::equal_to<Key>>
 class CuckooFilter {
   // Note that the following has to be a power of two and at least 4!
@@ -140,7 +141,7 @@ class CuckooFilter {
     // found or true.
     uint64_t hash1 = _hasherKey(k);
     uint64_t pos1 = hashToPos(hash1);
-    uint16_t fingerprint = hashToFingerprint(hash1);
+    uint16_t fingerprint = keyToFingerprint(k);
     // We compute the second hash already here to allow the result to
     // survive a mispredicted branch in the first loop. Is this sensible?
     uint64_t hash2 = _hasherPosFingerprint(pos1, fingerprint);
@@ -173,7 +174,7 @@ class CuckooFilter {
 
     uint64_t hash1 = _hasherKey(k);
     uint64_t pos1 = hashToPos(hash1);
-    uint16_t fingerprint = hashToFingerprint(hash1);
+    uint16_t fingerprint = keyToFingerprint(k);
     // We compute the second hash already here to let it survive a
     // mispredicted
     // branch in the first loop:
@@ -237,7 +238,7 @@ class CuckooFilter {
     // found or true.
     uint64_t hash1 = _hasherKey(k);
     uint64_t pos1 = hashToPos(hash1);
-    uint16_t fingerprint = hashToFingerprint(hash1);
+    uint16_t fingerprint = keyToFingerprint(k);
     // We compute the second hash already here to allow the result to
     // survive a mispredicted branch in the first loop. Is this sensible?
     uint64_t hash2 = _hasherPosFingerprint(pos1, fingerprint);
@@ -276,7 +277,8 @@ class CuckooFilter {
 
   uint64_t hashToPos(uint64_t hash) { return (hash >> _sizeShift) & _sizeMask; }
 
-  uint16_t hashToFingerprint(uint64_t hash) {
+  uint16_t keyToFingerprint(Key const& k) {
+    uint64_t hash = _fingerprint(k);
     uint16_t fingerprint = (uint16_t)(
         (hash ^ (hash >> 16) ^ (hash >> 32) ^ (hash >> 48)) & 0xFFFF);
     return (fingerprint ? fingerprint : 1);
@@ -312,9 +314,10 @@ class CuckooFilter {
   uint64_t _nrUsed;     // number of pairs stored in the table
   unsigned _maxRounds;  // maximum number of cuckoo rounds on insertion
 
-  HashKey _hasherKey;      // Instance to compute the first hash function
-  HashShort _hasherShort;  // Instance to compute the second hash function
-  CompKey _compKey;        // Instance to compare keys
+  HashKey _hasherKey;        // Instance to compute the first hash function
+  Fingerprint _fingerprint;  // Instance to compute a fingerprint of a key
+  HashShort _hasherShort;    // Instance to compute the second hash function
+  CompKey _compKey;          // Instance to compare keys
 };
 
 #endif
