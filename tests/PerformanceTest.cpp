@@ -156,6 +156,8 @@ int main(int argc, char* argv[]) {
   double pMiss = atof(argv[10]);
   uint64_t seed = atoll(argv[11]);
 
+  uint64_t nMaxTime = 14400;
+
   uint64_t nChunkSize = 1000000;  // will keep only the most recent X opcounts
                                   // to calculate percentiles, where nChunkSize
                                   // <= X <= 2*nChunkSize
@@ -183,10 +185,6 @@ int main(int argc, char* argv[]) {
   qdigest::QDigest* digestI = new qdigest::QDigest(10000);
   qdigest::QDigest* digestL = new qdigest::QDigest(10000);
   qdigest::QDigest* digestR = new qdigest::QDigest(10000);
-  auto overallStart = std::chrono::high_resolution_clock::now();
-  auto now = std::chrono::high_resolution_clock::now();
-  auto currentStart = std::chrono::high_resolution_clock::now();
-  auto currentFinish = std::chrono::high_resolution_clock::now();
 
   std::vector<double> opWeights;
   opWeights.push_back(pInsert);
@@ -213,6 +211,25 @@ int main(int argc, char* argv[]) {
   bool success;
   Key* k;
   Value* v;
+
+  // populate table to nInitialSize;
+  for (uint64_t i = 0; i < nInitialSize; i++) {
+    current = maxElement++;
+    k = new Key(current);
+    v = new Value(current);
+    success = map.insert(*k, v);
+    if (!success) {
+      std::cout << "Failed to insert " << current << " with range ("
+                << minElement << ", " << maxElement << ")" << std::endl;
+      exit(-1);
+    }
+  }
+
+  auto overallStart = std::chrono::high_resolution_clock::now();
+  auto now = std::chrono::high_resolution_clock::now();
+  auto currentStart = std::chrono::high_resolution_clock::now();
+  auto currentFinish = std::chrono::high_resolution_clock::now();
+
   for (uint64_t i = 0; i < (nOpCount / nChunkSize); i++) {
     if (oldDigestI != nullptr) {
       delete oldDigestI;
@@ -230,7 +247,7 @@ int main(int argc, char* argv[]) {
       opCode = operations.next();
       now = std::chrono::high_resolution_clock::now();
       if (std::chrono::duration_cast<std::chrono::seconds>(now - overallStart)
-              .count() > 3600) {
+              .count() > nMaxTime) {
         break;
       }
 
