@@ -12,6 +12,7 @@
 #include <cuckoomap/CuckooMap.h>
 #include <qdigest.h>
 
+#define MAX(a, b) (((a) >= (b)) ? (a) : (b))
 #define MIN(a, b) (((a) <= (b)) ? (a) : (b))
 
 #define KEY_PAD 4
@@ -89,38 +90,33 @@ typedef std::unordered_map<Key, Value*, KeyHash> unordered_map_for_key;
 class TestMap {
  private:
   int _useCuckoo;
-  std::unique_ptr<CuckooMap<Key, Value>> _cuckoo;
-  std::unique_ptr<unordered_map_for_key> _unordered;
+  CuckooMap<Key, Value> _cuckoo;
+  unordered_map_for_key _unordered;
 
  public:
-  TestMap(int useCuckoo, size_t initialSize) : _useCuckoo(useCuckoo) {
-    if (_useCuckoo) {
-      _cuckoo.reset(new CuckooMap<Key, Value>(initialSize));
-    } else {
-      _unordered.reset(new unordered_map_for_key(initialSize));
-    }
-  }
+  TestMap(int useCuckoo, size_t initialSize)
+      : _useCuckoo(useCuckoo), _cuckoo(initialSize), _unordered(initialSize) {}
   Value* lookup(Key const& k) {
     if (_useCuckoo) {
-      auto element = _cuckoo->lookup(k);
+      auto element = _cuckoo.lookup(k);
       return (element.found() ? element.value() : nullptr);
     } else {
-      auto element = _unordered->find(k);
-      return (element != _unordered->end()) ? (*element).second : nullptr;
+      auto element = _unordered.find(k);
+      return (element != _unordered.end()) ? (*element).second : nullptr;
     }
   }
   bool insert(Key const& k, Value* v) {
     if (_useCuckoo) {
-      return _cuckoo->insert(k, v);
+      return _cuckoo.insert(k, v);
     } else {
-      return _unordered->emplace(k, v).second;
+      return _unordered.emplace(k, v).second;
     }
   }
   bool remove(Key const& k) {
     if (_useCuckoo) {
-      return _cuckoo->remove(k);
+      return _cuckoo.remove(k);
     } else {
-      return (_unordered->erase(k) > 0);
+      return (_unordered.erase(k) > 0);
     }
   }
 };
@@ -141,7 +137,7 @@ class TestMap {
 int main(int argc, char* argv[]) {
   if (argc < 12) {
     std::cerr << "Incorrect number of parameters." << std::endl;
-    exit(-1);
+    return -1;
   }
 
   uint64_t useCuckoo = atoll(argv[1]);
@@ -156,7 +152,7 @@ int main(int argc, char* argv[]) {
   double pMiss = atof(argv[10]);
   uint64_t seed = atoll(argv[11]);
 
-  uint64_t nMaxTime = 14400;
+  uint64_t nMaxTime = 3600;
 
   uint64_t nChunkSize = 1000000;  // will keep only the most recent X opcounts
                                   // to calculate percentiles, where nChunkSize
@@ -164,17 +160,17 @@ int main(int argc, char* argv[]) {
 
   if (nInitialSize > nMaxSize || nWorking > nMaxSize) {
     std::cerr << "Invalid initial/total/working numbers." << std::endl;
-    exit(-1);
+    return -1;
   }
 
   if (pWorking < 0.0 || pWorking > 1.0) {
     std::cerr << "Keep 0 < pWorking < 1." << std::endl;
-    exit(-1);
+    return -1;
   }
 
   if (pMiss < 0.0 || pMiss > 1.0) {
     std::cerr << "Keep 0 < pMiss < 1." << std::endl;
-    exit(-1);
+    return -1;
   }
 
   RandomNumber r(seed);
@@ -221,7 +217,7 @@ int main(int argc, char* argv[]) {
     if (!success) {
       std::cout << "Failed to insert " << current << " with range ("
                 << minElement << ", " << maxElement << ")" << std::endl;
-      exit(-1);
+      return -1;
     }
   }
 
@@ -230,7 +226,7 @@ int main(int argc, char* argv[]) {
   auto currentStart = std::chrono::high_resolution_clock::now();
   auto currentFinish = std::chrono::high_resolution_clock::now();
 
-  for (uint64_t i = 0; i < (nOpCount / nChunkSize); i++) {
+  for (uint64_t i = 0; i < MAX((nOpCount / nChunkSize), 1); i++) {
     if (oldDigestI != nullptr) {
       delete oldDigestI;
       delete oldDigestL;
@@ -243,11 +239,13 @@ int main(int argc, char* argv[]) {
     digestL = new qdigest::QDigest(10000);
     digestR = new qdigest::QDigest(10000);
 
-    for (uint64_t j = 0; j < nChunkSize; j++) {
+    for (uint64_t j = 0; j < MIN(nChunkSize, (nOpCount - (i * nChunkSize)));
+         j++) {
       opCode = operations.next();
       now = std::chrono::high_resolution_clock::now();
       if (std::chrono::duration_cast<std::chrono::seconds>(now - overallStart)
               .count() > nMaxTime) {
+        std::cout << "Took too long at " << j << " " << i << std::endl;
         break;
       }
 
@@ -267,7 +265,7 @@ int main(int argc, char* argv[]) {
           if (!success) {
             std::cout << "Failed to insert " << current << " with range ("
                       << minElement << ", " << maxElement << ")" << std::endl;
-            exit(-1);
+            return -1;
           } else {
             digestI->insert(
                 std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -317,7 +315,7 @@ int main(int argc, char* argv[]) {
           if (!success) {
             std::cout << "Failed to remove " << current << " with range ("
                       << minElement << ", " << maxElement << ")" << std::endl;
-            exit(-1);
+            return -1;
           } else {
             digestR->insert(
                 std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -356,5 +354,5 @@ int main(int argc, char* argv[]) {
   delete digestL;
   delete digestR;
 
-  exit(0);
+  return 0;
 }
