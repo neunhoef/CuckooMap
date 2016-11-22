@@ -58,7 +58,7 @@ class CuckooMap {
         _valueSize(valueSize),
         _valueAlign(valueAlign),
         _nrUsed(0) {
-    auto t = new Subtable(firstSize, valueSize, valueAlign);
+    auto t = new Subtable(false, firstSize, valueSize, valueAlign);
     try {
       _tables.emplace_back(t);
     } catch (...) {
@@ -294,7 +294,8 @@ class CuckooMap {
     // If we get here, then some pair has been expunged from all tables and
     // we have to append a new table:
     uint64_t lastSize = _tables.back()->capacity();
-    auto t = new Subtable(lastSize * 4, _valueSize, _valueAlign);
+    bool useMmap = (_tables.size() < 3) ? true : false;
+    auto t = new Subtable(useMmap, lastSize * 4, _valueSize, _valueAlign);
     try {
       _tables.emplace_back(t);
     } catch (...) {
