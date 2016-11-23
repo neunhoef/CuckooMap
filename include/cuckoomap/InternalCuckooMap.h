@@ -125,8 +125,6 @@ class InternalCuckooMap {
     }
     try {
       _theBuffer = new char[_valueSize];
-      _filter = new CuckooFilter<Key, HashKey1, HashKey2>(
-          _useMmap, _size * SlotsPerBucket);
     } catch (...) {
       if (_useMmap) {
         munmap(_allocBase, _allocSize);
@@ -165,7 +163,6 @@ class InternalCuckooMap {
       delete[] _allocBase;
     }
     delete[] _theBuffer;
-    delete _filter;
   }
 
   InternalCuckooMap(InternalCuckooMap const&) = delete;
@@ -174,11 +171,6 @@ class InternalCuckooMap {
   InternalCuckooMap& operator=(InternalCuckooMap&&) = delete;
 
   bool lookup(Key const& k, Key*& kOut, Value*& vOut) {
-    // first check filter to fail-fast if key is not here
-    if (!_filter->lookup(k)) {
-      return false;
-    }
-
     // look up a key, return either false if no pair with key k is
     // found or true. In the latter case the pointers kOut and vOut
     // are set to point to the pair in the table. This pointers are only
@@ -256,9 +248,6 @@ class InternalCuckooMap {
         vTable = findSlotValue(pos1, i);
         *kTable = k;
         std::memcpy(vTable, v, _valueSize);
-        if (!_filter->insert(k)) {
-          throw;
-        };
         ++_nrUsed;
         if (kPtr != nullptr && vPtr != nullptr) {
           *kPtr = kTable;
@@ -276,9 +265,6 @@ class InternalCuckooMap {
         vTable = findSlotValue(pos2, i);
         *kTable = k;
         std::memcpy(vTable, v, _valueSize);
-        if (!_filter->insert(k)) {
-          throw;
-        };
         ++_nrUsed;
         if (kPtr != nullptr && vPtr != nullptr) {
           *kPtr = kTable;
@@ -306,10 +292,6 @@ class InternalCuckooMap {
     std::memcpy(_theBuffer, vTable, _valueSize);
     std::memcpy(vTable, v, _valueSize);
     std::memcpy(v, _theBuffer, _valueSize);
-    _filter->remove(k);
-    if (!_filter->insert(*kTable)) {
-      throw;
-    };
     if (kPtr != nullptr && vPtr != nullptr) {
       *kPtr = kTable;
       *vPtr = vTable;
@@ -321,7 +303,6 @@ class InternalCuckooMap {
     // remove the pair to which k and v point to in the table, this
     // pointer must have been returned by lookup before and no insert or
     // remove action must have been issued between that and this call.
-    _filter->remove(*k);
     k->~Key();
     new (k) Key();
     std::memset(v, 0, _valueSize);
@@ -345,8 +326,7 @@ class InternalCuckooMap {
   uint64_t nrUsed() { return _nrUsed; }
 
   uint64_t memoryUsage() {
-    return sizeof(InternalCuckooMap) + _allocSize + _valueSize +
-           _filter->memoryUsage();
+    return sizeof(InternalCuckooMap) + _allocSize + _valueSize;
   }
 
  private:  // methods
@@ -409,7 +389,6 @@ class InternalCuckooMap {
   char* _allocBase;  // base of original allocation
   char* _theBuffer;  // pointer to an area of size _valueSize for value swap
   uint64_t _nrUsed;  // number of pairs stored in the table
-  CuckooFilter<Key, HashKey1, HashKey2>* _filter;  // CuckooFilter instance
 
   HashKey1 _hasher1;  // Instance to compute the first hash function
   HashKey2 _hasher2;  // Instance to compute the second hash function

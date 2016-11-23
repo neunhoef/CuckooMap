@@ -35,7 +35,8 @@
 template <class Key, class Value,
           class HashKey1 = HashWithSeed<Key, 0xdeadbeefdeadbeefULL>,
           class HashKey2 = HashWithSeed<Key, 0xabcdefabcdef1234ULL>,
-          class CompKey = std::equal_to<Key>>
+          class CompKey = std::equal_to<Key>,
+          class HashShort = HashWithSeed<uint16_t, 0xfedcbafedcba4321ULL>>
 class CuckooMap {
  public:
   typedef Key KeyType;  // these are for ShardedMap
@@ -44,6 +45,7 @@ class CuckooMap {
   typedef HashKey2 HashKey2Type;
   typedef CompKey CompKeyType;
   typedef InternalCuckooMap<Key, Value, HashKey1, HashKey2, CompKey> Subtable;
+  typedef CuckooFilter<Key, HashKey1, HashKey2, HashShort, CompKey> Filter;
 
  private:
   size_t _firstSize;
@@ -57,12 +59,20 @@ class CuckooMap {
       : _firstSize(firstSize),
         _valueSize(valueSize),
         _valueAlign(valueAlign),
+        _randState(0x2636283625154737ULL),
         _nrUsed(0) {
     auto t = new Subtable(false, firstSize, valueSize, valueAlign);
     try {
       _tables.emplace_back(t);
     } catch (...) {
       delete t;
+      throw;
+    }
+    auto f = new Filter(false, _tables.back()->capacity());
+    try {
+      _filters.emplace_back(f);
+    } catch (...) {
+      delete f;
       throw;
     }
   }
@@ -240,19 +250,23 @@ class CuckooMap {
     for (int32_t layer = 0; static_cast<uint32_t>(layer) < _tables.size();
          ++layer) {
       Subtable& sub = *_tables[layer];
+      Filter& filter = *_filters[layer];
       Key* key;
       Value* value;
-      if (sub.lookup(k, key, value)) {
+      if (filter.lookup(k) && sub.lookup(k, key, value)) {
         f._key = key;
         f._value = value;
         f._layer = layer;
         if (layer != 0) {
-          Key kCopy = *key;
-          memcpy(buffer, value, _valueSize);
-          Value* vCopy = reinterpret_cast<Value*>(&buffer);
+          uint8_t r = pseudoRandomChoice();
+          if ((r & 3) == 0) {
+            Key kCopy = *key;
+            memcpy(buffer, value, _valueSize);
+            Value* vCopy = reinterpret_cast<Value*>(&buffer);
 
-          innerRemove(f);
-          innerInsert(kCopy, vCopy, &f);
+            innerRemove(f);
+            innerInsert(kCopy, vCopy, &f);
+          }
         }
         return;
       };
@@ -267,17 +281,20 @@ class CuckooMap {
 
     Key kCopy = k;
     Key originalKey = k;
+    Key originalKeyAtLayer = k;
     char buffer[_valueSize];
     memcpy(buffer, v, _valueSize);
     Value* vCopy = reinterpret_cast<Value*>(&buffer);
 
     int32_t layer = 0;
     int res;
+    bool filterRes;
     while (static_cast<uint32_t>(layer) < _tables.size()) {
       Subtable& sub = *_tables[layer];
+      Filter& filter = *_filters[layer];
       for (int i = 0; i < 3; ++i) {
         if (f != nullptr && _compKey(originalKey, kCopy)) {
-          res = _tables[0]->insert(kCopy, vCopy, &(f->_key), &(f->_value));
+          res = sub.insert(kCopy, vCopy, &(f->_key), &(f->_value));
           f->_layer = layer;
         } else {
           res = sub.insert(kCopy, vCopy, nullptr, nullptr);
@@ -285,9 +302,24 @@ class CuckooMap {
         if (res < 0) {  // key is already in the table
           return false;
         } else if (res == 0) {
+          filterRes = filter.insert(originalKeyAtLayer);
+          if (!filterRes) {
+            throw;
+          }
           ++_nrUsed;
           return true;
         }
+      }
+      if (!_compKey(kCopy, originalKeyAtLayer)) {
+        filterRes = filter.remove(kCopy);
+        if (!filterRes) {
+          throw;
+        }
+        filterRes = filter.insert(originalKeyAtLayer);
+        if (!filterRes) {
+          throw;
+        }
+        originalKeyAtLayer = kCopy;
       }
       ++layer;
     }
@@ -302,6 +334,14 @@ class CuckooMap {
       delete t;
       throw;
     }
+    auto fil = new Filter(useMmap, lastSize * 4);
+    try {
+      _filters.emplace_back(fil);
+    } catch (...) {
+      delete f;
+      throw;
+    }
+    originalKeyAtLayer = kCopy;
     while (res > 0) {
       if (f != nullptr && _compKey(originalKey, kCopy)) {
         res = _tables.back()->insert(kCopy, vCopy, &(f->_key), &(f->_value));
@@ -310,19 +350,31 @@ class CuckooMap {
         res = _tables.back()->insert(kCopy, vCopy, nullptr, nullptr);
       }
     }
+    filterRes = _filters.back()->insert(originalKeyAtLayer);
+    if (!filterRes) {
+      throw;
+    }
     ++_nrUsed;
     return true;
+  }
+
+  uint8_t pseudoRandomChoice() {
+    _randState = _randState * 997 + 17;  // ignore overflows
+    return static_cast<uint8_t>((_randState >> 37) & 0xff);
   }
 
   void release() { _mutex.unlock(); }
 
   void innerRemove(Finding& f) {
+    _filters[f._layer]->remove(*(f._key));
     _tables[f._layer]->remove(f._key, f._value);
     f._key = nullptr;
     --_nrUsed;
   }
 
+  uint64_t _randState;  // pseudo random state for move-to-front heuristic
   std::vector<std::unique_ptr<Subtable>> _tables;
+  std::vector<std::unique_ptr<Filter>> _filters;
   std::mutex _mutex;
   uint64_t _nrUsed;
 };

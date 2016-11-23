@@ -28,7 +28,7 @@ struct Value {
 int main(int argc, char* argv[]) {
   InternalCuckooMap<Key, Value> m(false, 1000);
   auto insert = [&]() -> void {
-    for (int i = 0; i < 100; ++i) {
+    for (int i = 1; i < 100; ++i) {
       Key k(i);
       Value v(i * i);
       int res = 1;
@@ -45,7 +45,7 @@ int main(int argc, char* argv[]) {
     }
   };
   auto show = [&]() {
-    for (int i = 99; i >= 0; --i) {
+    for (int i = 99; i >= 1; --i) {
       Key k(i);
       Key* kFound;
       Value* vFound;
@@ -60,7 +60,7 @@ int main(int argc, char* argv[]) {
     }
   };
   auto remove = [&]() -> void {
-    for (int i = 0; i < 50; ++i) {
+    for (int i = 1; i < 50; ++i) {
       Key k(i);
       if (m.remove(k)) {
         std::cout << "Removed key " << i << std::endl;

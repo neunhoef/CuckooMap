@@ -57,17 +57,19 @@ class CuckooFilter {
     _slotSize = sizeof(uint16_t);
 
     // Inflate size so that we have some padding to avoid failure
-    size *= 2;
+    size *= 2.0;
+    size = (size >= 1024) ? size : 1024;  // want 256 buckets minimum
 
     // First find the smallest power of two that is not smaller than size:
     size /= SlotsPerBucket;
-    _size = 256;
+    _size = size;
+    _niceSize = 256;
     _logSize = 8;
-    while (_size < size) {
-      _size <<= 1;
+    while (_niceSize < size) {
+      _niceSize <<= 1;
       _logSize += 1;
     }
-    _sizeMask = _size - 1;
+    _sizeMask = _niceSize - 1;
     _sizeShift = (64 - _logSize) / 2;
     _maxRounds = _size;  // TODO: tune this
     _allocSize = _size * _slotSize * SlotsPerBucket +
@@ -277,7 +279,10 @@ class CuckooFilter {
     return ret;
   }
 
-  uint64_t hashToPos(uint64_t hash) { return (hash >> _sizeShift) & _sizeMask; }
+  uint64_t hashToPos(uint64_t hash) {
+    uint64_t relevantBits = (hash >> _sizeShift) & _sizeMask;
+    return ((relevantBits < _size) ? relevantBits : (relevantBits - _size));
+  }
 
   uint16_t keyToFingerprint(Key const& k) {
     uint64_t hash = _fingerprint(k);
@@ -301,7 +306,9 @@ class CuckooFilter {
   size_t _slotSize;  // total size of a slot
 
   uint64_t _logSize;    // logarithm (base 2) of number of buckets
-  uint64_t _size;       // number of buckets, == 2^_logSize
+  uint64_t _size;       // actual number of buckets
+  uint64_t _niceSize;   // smallest power of 2 at least number of buckets, ==
+                        // 2^_logSize
   uint64_t _sizeMask;   // used to mask out some bits from the hash
   uint32_t _sizeShift;  // used to shift the bits down to get a position
   uint64_t _allocSize;  // number of allocated bytes,

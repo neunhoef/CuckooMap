@@ -208,8 +208,18 @@ int main(int argc, char* argv[]) {
   Key* k;
   Value* v;
 
+  auto insertStart = std::chrono::high_resolution_clock::now();
+  auto now = std::chrono::high_resolution_clock::now();
+
   // populate table to nInitialSize;
   for (uint64_t i = 0; i < nInitialSize; i++) {
+    now = std::chrono::high_resolution_clock::now();
+    if (std::chrono::duration_cast<std::chrono::seconds>(now - insertStart)
+            .count() > nMaxTime) {
+      // took too long to do initial insertionss, bail out with defaults
+      std::cout << "0,0,0,0,0,0,0,0,0,0,0,0" << std::endl;
+      return -1;
+    }
     current = maxElement++;
     k = new Key(current);
     v = new Value(current);
@@ -221,10 +231,10 @@ int main(int argc, char* argv[]) {
     }
   }
 
-  auto overallStart = std::chrono::high_resolution_clock::now();
-  auto now = std::chrono::high_resolution_clock::now();
+  auto opStart = std::chrono::high_resolution_clock::now();
   auto currentStart = std::chrono::high_resolution_clock::now();
   auto currentFinish = std::chrono::high_resolution_clock::now();
+  bool timeExceeded = false;
 
   for (uint64_t i = 0; i < MAX((nOpCount / nChunkSize), 1); i++) {
     if (oldDigestI != nullptr) {
@@ -243,9 +253,9 @@ int main(int argc, char* argv[]) {
          j++) {
       opCode = operations.next();
       now = std::chrono::high_resolution_clock::now();
-      if (std::chrono::duration_cast<std::chrono::seconds>(now - overallStart)
+      if (std::chrono::duration_cast<std::chrono::seconds>(now - opStart)
               .count() > nMaxTime) {
-        std::cout << "Took too long at " << j << " " << i << std::endl;
+        timeExceeded = true;
         break;
       }
 
@@ -329,6 +339,10 @@ int main(int argc, char* argv[]) {
         default:
           break;
       }
+    }
+
+    if (timeExceeded) {
+      break;
     }
   }
 
