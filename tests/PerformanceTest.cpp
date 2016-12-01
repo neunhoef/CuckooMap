@@ -204,120 +204,124 @@ int main(int argc, char* argv[]) {
   auto insertStart = std::chrono::high_resolution_clock::now();
   auto now = std::chrono::high_resolution_clock::now();
 
-  // populate table to nInitialSize;
-  for (uint64_t i = 0; i < nInitialSize; i++) {
-    now = std::chrono::high_resolution_clock::now();
-    if (std::chrono::duration_cast<std::chrono::seconds>(now - insertStart)
-            .count() > nMaxTime) {
-      // took too long to do initial insertions, move on to measurements
-      break;
+  try {
+    // populate table to nInitialSize;
+    for (uint64_t i = 0; i < nInitialSize; i++) {
+      now = std::chrono::high_resolution_clock::now();
+      if (std::chrono::duration_cast<std::chrono::seconds>(now - insertStart)
+              .count() > nMaxTime) {
+        // took too long to do initial insertions, move on to measurements
+        break;
+      }
+      current = maxElement++;
+      k = new Key(current);
+      v = new Value(current);
+      success = map.insert(*k, v);
+      if (!success) {
+        std::cout << "Failed to insert " << current << " with range ("
+                  << minElement << ", " << maxElement << ")" << std::endl;
+        return -1;
+      }
     }
-    current = maxElement++;
-    k = new Key(current);
-    v = new Value(current);
-    success = map.insert(*k, v);
-    if (!success) {
-      std::cout << "Failed to insert " << current << " with range ("
-                << minElement << ", " << maxElement << ")" << std::endl;
-      return -1;
-    }
-  }
 
-  auto currentStart = std::chrono::high_resolution_clock::now();
-  auto currentFinish = std::chrono::high_resolution_clock::now();
+    auto currentStart = std::chrono::high_resolution_clock::now();
+    auto currentFinish = std::chrono::high_resolution_clock::now();
 
-  for (uint64_t i = 0; i < nOpCount; i++) {
-    opCode = operations.next();
-    switch (opCode) {
-      case 0:
-        // insert if allowed
-        if (maxElement - minElement >= nMaxSize) {
+    for (uint64_t i = 0; i < nOpCount; i++) {
+      opCode = operations.next();
+      switch (opCode) {
+        case 0:
+          // insert if allowed
+          if (maxElement - minElement >= nMaxSize) {
+            break;
+          }
+
+          current = maxElement++;
+          k = new Key(current);
+          v = new Value(current);
+          currentStart = std::chrono::high_resolution_clock::now();
+          success = map.insert(*k, v);
+          currentFinish = std::chrono::high_resolution_clock::now();
+          if (!success) {
+            std::cout << "Failed to insert " << current << " with range ("
+                      << minElement << ", " << maxElement << ")" << std::endl;
+            return -1;
+          } else {
+            digestI.insert(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                               currentFinish - currentStart)
+                               .count(),
+                           1);
+            // std::cout << "Inserted " << current << std::endl;
+          }
+          delete k;
+          delete v;
           break;
-        }
+        case 1:
+          // lookup
+          barrier = MIN(minElement + nWorking, maxElement);
+          nHot = barrier - minElement;
+          nCold = maxElement - barrier;
+          if (miss.next()) {
+            current = maxElement + r.next();
+          } else if (working.next()) {
+            current = minElement + r.nextInRange(nHot);
+          } else {
+            current = nCold ? barrier + r.nextInRange(nCold)
+                            : minElement + r.nextInRange(nHot);
+          }
 
-        current = maxElement++;
-        k = new Key(current);
-        v = new Value(current);
-        currentStart = std::chrono::high_resolution_clock::now();
-        success = map.insert(*k, v);
-        currentFinish = std::chrono::high_resolution_clock::now();
-        if (!success) {
-          std::cout << "Failed to insert " << current << " with range ("
-                    << minElement << ", " << maxElement << ")" << std::endl;
-          return -1;
-        } else {
-          digestI.insert(std::chrono::duration_cast<std::chrono::nanoseconds>(
+          k = new Key(current);
+          currentStart = std::chrono::high_resolution_clock::now();
+          v = map.lookup(current);
+          currentFinish = std::chrono::high_resolution_clock::now();
+          digestL.insert(std::chrono::duration_cast<std::chrono::nanoseconds>(
                              currentFinish - currentStart)
                              .count(),
                          1);
-          // std::cout << "Inserted " << current << std::endl;
-        }
-        delete k;
-        delete v;
-        break;
-      case 1:
-        // lookup
-        barrier = MIN(minElement + nWorking, maxElement);
-        nHot = barrier - minElement;
-        nCold = maxElement - barrier;
-        if (miss.next()) {
-          current = maxElement + r.next();
-        } else if (working.next()) {
-          current = minElement + r.nextInRange(nHot);
-        } else {
-          current = nCold ? barrier + r.nextInRange(nCold)
-                          : minElement + r.nextInRange(nHot);
-        }
-
-        k = new Key(current);
-        currentStart = std::chrono::high_resolution_clock::now();
-        v = map.lookup(current);
-        currentFinish = std::chrono::high_resolution_clock::now();
-        digestL.insert(std::chrono::duration_cast<std::chrono::nanoseconds>(
-                           currentFinish - currentStart)
-                           .count(),
-                       1);
-        delete k;
-        break;
-      case 2:
-        // remove if allowed
-        if (minElement >= maxElement) {
+          delete k;
           break;
-        }
-        current = working.next() ? minElement++ : --maxElement;
+        case 2:
+          // remove if allowed
+          if (minElement >= maxElement) {
+            break;
+          }
+          current = working.next() ? minElement++ : --maxElement;
 
-        k = new Key(current);
-        currentStart = std::chrono::high_resolution_clock::now();
-        success = map.remove(current);
-        currentFinish = std::chrono::high_resolution_clock::now();
-        if (!success) {
-          std::cout << "Failed to remove " << current << " with range ("
-                    << minElement << ", " << maxElement << ")" << std::endl;
-          return -1;
-        } else {
-          digestR.insert(std::chrono::duration_cast<std::chrono::nanoseconds>(
-                             currentFinish - currentStart)
-                             .count(),
-                         1);
-          // std::cout << "Removed " << current << std::endl;
-        }
-        delete k;
-        break;
-      default:
-        break;
+          k = new Key(current);
+          currentStart = std::chrono::high_resolution_clock::now();
+          success = map.remove(current);
+          currentFinish = std::chrono::high_resolution_clock::now();
+          if (!success) {
+            std::cout << "Failed to remove " << current << " with range ("
+                      << minElement << ", " << maxElement << ")" << std::endl;
+            return -1;
+          } else {
+            digestR.insert(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                               currentFinish - currentStart)
+                               .count(),
+                           1);
+            // std::cout << "Removed " << current << std::endl;
+          }
+          delete k;
+          break;
+        default:
+          break;
+      }
     }
-  }
 
-  uint64_t finalSize = maxElement - minElement;
-  std::cout << finalSize << "," << digestI.percentile(0.500) << ","
-            << digestI.percentile(0.950) << "," << digestI.percentile(0.990)
-            << "," << digestI.percentile(0.999) << ","
-            << digestL.percentile(0.500) << "," << digestL.percentile(0.950)
-            << "," << digestL.percentile(0.990) << ","
-            << digestL.percentile(0.999) << "," << digestR.percentile(0.500)
-            << "," << digestR.percentile(0.950) << ","
-            << digestR.percentile(0.990) << "," << digestR.percentile(0.999)
-            << std::endl;
+    uint64_t finalSize = maxElement - minElement;
+    std::cout << finalSize << "," << digestI.percentile(0.500) << ","
+              << digestI.percentile(0.950) << "," << digestI.percentile(0.990)
+              << "," << digestI.percentile(0.999) << ","
+              << digestL.percentile(0.500) << "," << digestL.percentile(0.950)
+              << "," << digestL.percentile(0.990) << ","
+              << digestL.percentile(0.999) << "," << digestR.percentile(0.500)
+              << "," << digestR.percentile(0.950) << ","
+              << digestR.percentile(0.990) << "," << digestR.percentile(0.999)
+              << std::endl;
+  } catch (std::bad_alloc) {
+    std::cout << "0,0,0,0,0,0,0,0,0,0,0,0,0" << std::endl;
+  }
 
   return 0;
 }
