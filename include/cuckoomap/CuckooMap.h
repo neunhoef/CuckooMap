@@ -267,8 +267,11 @@ class CuckooMap {
         f._value = value;
         f._layer = layer;
         if (moveToFront && layer != 0) {
+          uint8_t fromBack = _tables.size() - layer;
+          uint8_t denominator = (fromBack >= 6) ? (2 << 6) : (2 << fromBack);
+          uint8_t mask = denominator - 1;
           uint8_t r = pseudoRandomChoice();
-          if ((r & 3) == 0) {
+          if ((r & mask) == 0) {
             Key kCopy = *key;
             memcpy(buffer, value, _valueSize);
             Value* vCopy = reinterpret_cast<Value*>(&buffer);
