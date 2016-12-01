@@ -55,12 +55,14 @@ class CuckooMap {
 
  public:
   CuckooMap(size_t firstSize, size_t valueSize = sizeof(Value),
-            size_t valueAlign = alignof(Value))
+            size_t valueAlign = alignof(Value), bool useFilters = false)
       : _firstSize(firstSize),
         _valueSize(valueSize),
         _valueAlign(valueAlign),
         _randState(0x2636283625154737ULL),
-        _nrUsed(0) {
+        _nrUsed(0),
+        _useFilters(useFilters),
+        _dummyFilter(false, 0) {
     auto t = new Subtable(false, firstSize, valueSize, valueAlign);
     try {
       _tables.emplace_back(t);
@@ -68,12 +70,14 @@ class CuckooMap {
       delete t;
       throw;
     }
-    auto f = new Filter(false, _tables.back()->capacity());
-    try {
-      _filters.emplace_back(f);
-    } catch (...) {
-      delete f;
-      throw;
+    if (_useFilters) {
+      auto f = new Filter(false, _tables.back()->capacity());
+      try {
+        _filters.emplace_back(f);
+      } catch (...) {
+        delete f;
+        throw;
+      }
     }
   }
 
@@ -178,7 +182,7 @@ class CuckooMap {
     //   }
     MyMutexGuard guard(_mutex);
     Finding f(nullptr, nullptr, this, -1);
-    innerLookup(k, f);
+    innerLookup(k, f, true);
     guard.release();
     return f;
   }
@@ -190,7 +194,7 @@ class CuckooMap {
       _mutex.lock();
     }
     f._key = nullptr;
-    innerLookup(k, f);
+    innerLookup(k, f, true);
     return f.found() > 0;
   }
 
@@ -200,7 +204,7 @@ class CuckooMap {
     // already a pair with the same key k in the table, in which case
     // the table is unchanged.
     MyMutexGuard guard(_mutex);
-    return innerInsert(k, v, nullptr);
+    return innerInsert(k, v, nullptr, true);
   }
 
   bool insert(Key const& k, Value const* v, Finding& f) {
@@ -209,7 +213,7 @@ class CuckooMap {
       f._map = this;
       _mutex.lock();
     }
-    bool res = innerInsert(k, v, nullptr);
+    bool res = innerInsert(k, v, nullptr, true);
     f._key = nullptr;
     return res;
   }
@@ -217,7 +221,10 @@ class CuckooMap {
   bool remove(Key const& k) {
     // remove the pair with key k, if one is in the table. Return true if
     // a pair was removed and false otherwise.
-    Finding f = lookup(k);
+    MyMutexGuard guard(_mutex);
+    Finding f(nullptr, nullptr, this, -1);
+    innerLookup(k, f, false);
+    guard.release();
     if (f.found() == 0) {
       return false;
     }
@@ -244,20 +251,22 @@ class CuckooMap {
   }
 
  private:
-  void innerLookup(Key const& k, Finding& f) {
+  void innerLookup(Key const& k, Finding& f, bool moveToFront) {
     char buffer[_valueSize];
     // f must be initialized with _key == nullptr
     for (int32_t layer = 0; static_cast<uint32_t>(layer) < _tables.size();
          ++layer) {
       Subtable& sub = *_tables[layer];
-      Filter& filter = *_filters[layer];
+      Filter& filter = _useFilters ? *_filters[layer] : _dummyFilter;
       Key* key;
       Value* value;
-      if (filter.lookup(k) && sub.lookup(k, key, value)) {
+      bool found = _useFilters ? (filter.lookup(k) && sub.lookup(k, key, value))
+                               : sub.lookup(k, key, value);
+      if (found) {
         f._key = key;
         f._value = value;
         f._layer = layer;
-        if (layer != 0) {
+        if (moveToFront && layer != 0) {
           uint8_t r = pseudoRandomChoice();
           if ((r & 3) == 0) {
             Key kCopy = *key;
@@ -265,7 +274,7 @@ class CuckooMap {
             Value* vCopy = reinterpret_cast<Value*>(&buffer);
 
             innerRemove(f);
-            innerInsert(kCopy, vCopy, &f);
+            innerInsert(kCopy, vCopy, &f, false);
           }
         }
         return;
@@ -273,7 +282,7 @@ class CuckooMap {
     }
   }
 
-  bool innerInsert(Key const& k, Value const* v, Finding* f) {
+  bool innerInsert(Key const& k, Value const* v, Finding* f, bool coldInsert) {
     // inserts a pair (k, v) into the table
     // returns true if the insertion took place and false if there was
     // already a pair with the same key k in the table, in which case
@@ -286,13 +295,14 @@ class CuckooMap {
     memcpy(buffer, v, _valueSize);
     Value* vCopy = reinterpret_cast<Value*>(&buffer);
 
-    int32_t layer = 0;
+    int32_t layer = coldInsert ? (_tables.size() - 1) : 0;
     int res;
     bool filterRes;
     while (static_cast<uint32_t>(layer) < _tables.size()) {
       Subtable& sub = *_tables[layer];
-      Filter& filter = *_filters[layer];
-      for (int i = 0; i < 3; ++i) {
+      Filter& filter = _useFilters ? *_filters[layer] : _dummyFilter;
+      int maxRounds = coldInsert ? sub.maxRounds() : 8;
+      for (int i = 0; i < maxRounds; ++i) {
         if (f != nullptr && _compKey(originalKey, kCopy)) {
           res = sub.insert(kCopy, vCopy, &(f->_key), &(f->_value));
           f->_layer = layer;
@@ -302,15 +312,17 @@ class CuckooMap {
         if (res < 0) {  // key is already in the table
           return false;
         } else if (res == 0) {
-          filterRes = filter.insert(originalKeyAtLayer);
-          if (!filterRes) {
-            throw;
+          if (_useFilters) {
+            filterRes = filter.insert(originalKeyAtLayer);
+            if (!filterRes) {
+              throw;
+            }
           }
           ++_nrUsed;
           return true;
         }
       }
-      if (!_compKey(kCopy, originalKeyAtLayer)) {
+      if (_useFilters && !_compKey(kCopy, originalKeyAtLayer)) {
         filterRes = filter.remove(kCopy);
         if (!filterRes) {
           throw;
@@ -326,7 +338,11 @@ class CuckooMap {
     // If we get here, then some pair has been expunged from all tables and
     // we have to append a new table:
     uint64_t lastSize = _tables.back()->capacity();
-    bool useMmap = (_tables.size() < 3) ? true : false;
+    /*std::cout << "Insertion failure at level " << _tables.size() - 1 << " at "
+              << 100.0 *
+                     (((double)_tables.back()->nrUsed()) / ((double)lastSize))
+              << "% capacity with cold " << coldInsert << std::endl;*/
+    bool useMmap = (_tables.size() >= 3);
     auto t = new Subtable(useMmap, lastSize * 4, _valueSize, _valueAlign);
     try {
       _tables.emplace_back(t);
@@ -334,12 +350,14 @@ class CuckooMap {
       delete t;
       throw;
     }
-    auto fil = new Filter(useMmap, lastSize * 4);
-    try {
-      _filters.emplace_back(fil);
-    } catch (...) {
-      delete f;
-      throw;
+    if (_useFilters) {
+      auto fil = new Filter(useMmap, lastSize * 4);
+      try {
+        _filters.emplace_back(fil);
+      } catch (...) {
+        delete f;
+        throw;
+      }
     }
     originalKeyAtLayer = kCopy;
     while (res > 0) {
@@ -350,9 +368,11 @@ class CuckooMap {
         res = _tables.back()->insert(kCopy, vCopy, nullptr, nullptr);
       }
     }
-    filterRes = _filters.back()->insert(originalKeyAtLayer);
-    if (!filterRes) {
-      throw;
+    if (_useFilters) {
+      filterRes = _filters.back()->insert(originalKeyAtLayer);
+      if (!filterRes) {
+        throw;
+      }
     }
     ++_nrUsed;
     return true;
@@ -366,7 +386,9 @@ class CuckooMap {
   void release() { _mutex.unlock(); }
 
   void innerRemove(Finding& f) {
-    _filters[f._layer]->remove(*(f._key));
+    if (_useFilters) {
+      _filters[f._layer]->remove(*(f._key));
+    }
     _tables[f._layer]->remove(f._key, f._value);
     f._key = nullptr;
     --_nrUsed;
@@ -375,8 +397,10 @@ class CuckooMap {
   uint64_t _randState;  // pseudo random state for move-to-front heuristic
   std::vector<std::unique_ptr<Subtable>> _tables;
   std::vector<std::unique_ptr<Filter>> _filters;
+  Filter _dummyFilter;
   std::mutex _mutex;
   uint64_t _nrUsed;
+  bool _useFilters;
 };
 
 #endif

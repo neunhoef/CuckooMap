@@ -15,22 +15,17 @@
 #define MAX(a, b) (((a) >= (b)) ? (a) : (b))
 #define MIN(a, b) (((a) <= (b)) ? (a) : (b))
 
-#define KEY_PAD 4
-#define VALUE_PAD 4
-
 struct Key {
-  int k;
-  static constexpr char padding[KEY_PAD] = {0};
+  uint64_t k;
   Key() : k(0) {}
-  Key(int i) : k(i) {}
+  Key(uint64_t i) : k(i) {}
   bool empty() { return k == 0; }
 };
 
 struct Value {
-  int v;
-  static constexpr char padding[VALUE_PAD] = {0};
+  uint64_t v;
   Value() : v(0) {}
-  Value(int i) : v(i) {}
+  Value(uint64_t i) : v(i) {}
   bool empty() { return v == 0; }
 };
 
@@ -152,7 +147,7 @@ int main(int argc, char* argv[]) {
   double pMiss = atof(argv[10]);
   uint64_t seed = atoll(argv[11]);
 
-  uint64_t nMaxTime = 3600;
+  uint64_t nMaxTime = 7200;
 
   uint64_t nChunkSize = 1000000;  // will keep only the most recent X opcounts
                                   // to calculate percentiles, where nChunkSize
@@ -198,7 +193,7 @@ int main(int argc, char* argv[]) {
   missWeights.push_back(pMiss);
   WeightedSelector miss(seed, missWeights);
 
-  size_t actualInitialSize = MIN(nInitialSize, 10000000);
+  size_t actualInitialSize = MIN(nInitialSize, 1048576);
   TestMap map(useCuckoo, nInitialSize);
   uint64_t minElement = 1;
   uint64_t maxElement = 1;

@@ -325,6 +325,8 @@ class InternalCuckooMap {
 
   uint64_t nrUsed() { return _nrUsed; }
 
+  uint64_t maxRounds() { return 2 * _logSize; }
+
   uint64_t memoryUsage() {
     return sizeof(InternalCuckooMap) + _allocSize + _valueSize;
   }
