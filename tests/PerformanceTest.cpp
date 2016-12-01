@@ -191,7 +191,7 @@ int main(int argc, char* argv[]) {
   WeightedSelector miss(seed, missWeights);
 
   size_t actualInitialSize = MIN(nInitialSize, 1048576);
-  TestMap map(useCuckoo, nInitialSize);
+  TestMap map(useCuckoo, actualInitialSize);
   uint64_t minElement = 1;
   uint64_t maxElement = 1;
   uint64_t opCode;

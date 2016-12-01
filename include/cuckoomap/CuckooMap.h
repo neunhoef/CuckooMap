@@ -330,7 +330,6 @@ class CuckooMap {
       }
       // check if table is too full; if so, expunge a random element
       if (!somethingExpunged && sub.overfull()) {
-        std::cout << "Picking a random element." << std::endl;
         bool expunged = sub.expungeRandom(kCopy, vCopy);
         if (!expunged) {
           throw;
@@ -338,7 +337,6 @@ class CuckooMap {
         somethingExpunged = true;
       }
       if (somethingExpunged) {
-        std::cout << "Something expunged." << std::endl;
         if (_useFilters && !_compKey(kCopy, originalKeyAtLayer)) {
           filterRes = filter.remove(kCopy);
           if (!filterRes) {
