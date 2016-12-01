@@ -298,13 +298,15 @@ class CuckooMap {
     memcpy(buffer, v, _valueSize);
     Value* vCopy = reinterpret_cast<Value*>(&buffer);
 
-    int32_t layer = (layerHint < 0) ? (_tables.size() - 1) : layerHint;
+    int32_t lastLayer = _tables.size() - 1;
+    int32_t layer = (layerHint < 0) ? lastLayer : layerHint;
     int res;
     bool filterRes;
+    bool somethingExpunged = true;
     while (static_cast<uint32_t>(layer) < _tables.size()) {
       Subtable& sub = *_tables[layer];
       Filter& filter = _useFilters ? *_filters[layer] : _dummyFilter;
-      int maxRounds = (layerHint < 0) ? sub.maxRounds() : 8;
+      int maxRounds = (layerHint < 0) ? 128 : 4;
       for (int i = 0; i < maxRounds; ++i) {
         if (f != nullptr && _compKey(originalKey, kCopy)) {
           res = sub.insert(kCopy, vCopy, &(f->_key), &(f->_value));
@@ -322,26 +324,42 @@ class CuckooMap {
             }
           }
           ++_nrUsed;
-          return true;
+          somethingExpunged = false;
+          break;
         }
       }
-      if (_useFilters && !_compKey(kCopy, originalKeyAtLayer)) {
-        filterRes = filter.remove(kCopy);
-        if (!filterRes) {
+      // check if table is too full; if so, expunge a random element
+      if (!somethingExpunged && sub.overfull()) {
+        std::cout << "Picking a random element." << std::endl;
+        bool expunged = sub.expungeRandom(kCopy, vCopy);
+        if (!expunged) {
           throw;
         }
-        filterRes = filter.insert(originalKeyAtLayer);
-        if (!filterRes) {
-          throw;
-        }
-        originalKeyAtLayer = kCopy;
+        somethingExpunged = true;
       }
-      ++layer;
+      if (somethingExpunged) {
+        std::cout << "Something expunged." << std::endl;
+        if (_useFilters && !_compKey(kCopy, originalKeyAtLayer)) {
+          filterRes = filter.remove(kCopy);
+          if (!filterRes) {
+            throw;
+          }
+          filterRes = filter.insert(originalKeyAtLayer);
+          if (!filterRes) {
+            throw;
+          }
+          originalKeyAtLayer = kCopy;
+        }
+        layer = (layer == lastLayer) ? layer + 1 : lastLayer;
+      } else {
+        return true;
+      }
     }
     // If we get here, then some pair has been expunged from all tables and
     // we have to append a new table:
     uint64_t lastSize = _tables.back()->capacity();
-    /*std::cout << "Insertion failure at level " << _tables.size() - 1 << " at "
+    /*std::cout << "Insertion failure at level " << _tables.size() - 1 << " at
+       "
               << 100.0 *
                      (((double)_tables.back()->nrUsed()) / ((double)lastSize))
               << "% capacity with cold " << coldInsert << std::endl;*/
