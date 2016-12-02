@@ -321,25 +321,25 @@ class InternalCuckooMap {
     return true;
   }
 
-  uint64_t capacity() { return _size * SlotsPerBucket; }
+  uint64_t capacity() const { return _size * SlotsPerBucket; }
 
-  uint64_t nrUsed() { return _nrUsed; }
+  uint64_t nrUsed() const { return _nrUsed; }
 
-  uint64_t maxRounds() { return 2 * _logSize; }
+  uint64_t maxRounds() const { return 2 * _logSize; }
 
-  uint64_t memoryUsage() {
+  uint64_t memoryUsage() const {
     return sizeof(InternalCuckooMap) + _allocSize + _valueSize;
   }
 
  private:  // methods
-  Key* findSlotKey(uint64_t pos, uint64_t slot) {
+  Key* findSlotKey(uint64_t pos, uint64_t slot) const {
     char* address = _base + _slotSize * (pos * SlotsPerBucket + slot);
     auto ret = reinterpret_cast<Key*>(address);
     check(ret, true);
     return ret;
   }
 
-  Value* findSlotValue(uint64_t pos, uint64_t slot) {
+  Value* findSlotValue(uint64_t pos, uint64_t slot) const {
     char* address =
         _base + _slotSize * (pos * SlotsPerBucket + slot) + _valueOffset;
     auto ret = reinterpret_cast<Value*>(address);
@@ -347,7 +347,7 @@ class InternalCuckooMap {
     return ret;
   }
 
-  bool check(void* p, bool isKey) {
+  bool check(void* p, bool isKey) const {
     char* address = reinterpret_cast<char*>(p);
     /* REGULAR MEMORY ALLOCATION
     if ((address - _allocBase) + (isKey ? _slotSize : _valueSize) - 1 >=
@@ -363,7 +363,7 @@ class InternalCuckooMap {
     return false;
   }
 
-  uint64_t hashToPos(uint64_t hash) { return (hash >> _sizeShift) & _sizeMask; }
+  uint64_t hashToPos(uint64_t hash) const { return (hash >> _sizeShift) & _sizeMask; }
 
   uint8_t pseudoRandomChoice() {
     _randState = _randState * 997 + 17;  // ignore overflows
