@@ -13,7 +13,7 @@ namespace std {
 
 template <>
 struct equal_to<Key> {
-  bool operator()(Key const& a, Key const& b) { return a.k == b.k; }
+  bool operator()(Key const& a, Key const& b) const { return a.k == b.k; }
 };
 }
 

@@ -109,7 +109,7 @@ class CuckooMap {
     Finding(Key* k, Value* v, CuckooMap* m, int32_t l)
         : _key(k), _value(v), _map(m), _layer(l) {}
 
-    Finding() : _key(nullptr), _value(nullptr), _map(nullptr), _layer(-1) {}
+    constexpr Finding() noexcept : _key(nullptr), _value(nullptr), _map(nullptr), _layer(-1) {}
 
     ~Finding() {
       if (_map != nullptr) {
@@ -154,7 +154,7 @@ class CuckooMap {
 
     // Return 1 if something was found and 0 otherwise. If this returns 0,
     // then key() and value() are undefined.
-    int32_t found() { return (_map != nullptr && _key != nullptr) ? 1 : 0; }
+    int32_t found() const { return (_map != nullptr && _key != nullptr) ? 1 : 0; }
 
     // The following are only relevant for CuckooMultiMaps, we add the method
     // here to keep the API consistent.

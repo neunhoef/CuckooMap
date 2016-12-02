@@ -32,14 +32,14 @@ template <class Key, class Value,
 class CuckooMultiMap {
   struct InnerKey : Key {
     int32_t seq;
-    InnerKey() : Key(), seq(0) {}
+    constexpr InnerKey() noexcept : Key(), seq(0) {}
     InnerKey(Key const& other, int32_t s) : Key(other), seq(s) {}
-    bool empty() { return seq == 0; }
+    bool empty() const { return seq == 0; }
   };
 
   struct InnerHashKey1 {
     HashKey1 hasher;
-    uint64_t operator()(InnerKey const& k) {
+    uint64_t operator()(InnerKey const& k) const {
       uint64_t hash = hasher(k.k);
       int32_t seq = k.seq > 0 ? k.seq : 0;
       return fasthash64(&seq, sizeof(seq), hash);
@@ -48,7 +48,7 @@ class CuckooMultiMap {
 
   struct InnerHashKey2 {
     HashKey2 hasher;
-    uint64_t operator()(InnerKey const& k) {
+    uint64_t operator()(InnerKey const& k) const {
       uint64_t hash = hasher(k.k);
       int32_t seq = k.seq > 0 ? k.seq : 0;
       return fasthash64(&seq, sizeof(seq), hash);
@@ -57,7 +57,7 @@ class CuckooMultiMap {
 
   struct InnerCompKey {
     CompKey comp;
-    bool operator()(InnerKey const& a, InnerKey const& b) {
+    bool operator()(InnerKey const& a, InnerKey const& b) const {
       if (!comp(a.k, b.k)) {
         return false;
       }
@@ -112,16 +112,16 @@ class CuckooMultiMap {
     // are, and not copyable, because _innerFinding is not. Destruction
     // destructs _innerFinding and thus releases the mutex.
 
-    int32_t found() {
+    int32_t found() const {
       if (_innerFinding.found() == 0) {
         return 0;
       }
       return _count;
     }
 
-    Key* key() { return static_cast<Key*>(_innerFinding.key()); }
+    Key* key() const { return static_cast<Key*>(_innerFinding.key()); }
 
-    Value* value() { return _innerFinding.value(); }
+    Value* value() const { return _innerFinding.value(); }
 
     bool next() {
       if (_map == nullptr && _innerFinding.found() == 0) {
@@ -228,7 +228,7 @@ class CuckooMultiMap {
     return true;
   }
 
-  uint64_t nrUsed() { return _innerMap.nrUsed(); }
+  uint64_t nrUsed() const { return _innerMap.nrUsed(); }
 
  private:
   bool innerInsert(Finding& f, Value const* v) {

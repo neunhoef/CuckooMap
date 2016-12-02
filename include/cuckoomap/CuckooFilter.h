@@ -140,7 +140,7 @@ class CuckooFilter {
   CuckooFilter& operator=(CuckooFilter const&) = delete;
   CuckooFilter& operator=(CuckooFilter&&) = delete;
 
-  bool lookup(Key const& k) {
+  bool lookup(Key const& k) const {
     // look up a key, return either false if no pair with key k is
     // found or true.
     uint64_t hash1 = _hasherKey(k);
@@ -266,32 +266,32 @@ class CuckooFilter {
     return false;
   }
 
-  uint64_t capacity() { return _size * SlotsPerBucket; }
+  uint64_t capacity() const { return _size * SlotsPerBucket; }
 
-  uint64_t nrUsed() { return _nrUsed; }
+  uint64_t nrUsed() const { return _nrUsed; }
 
-  uint64_t memoryUsage() { return sizeof(CuckooFilter) + _allocSize; }
+  uint64_t memoryUsage() const { return sizeof(CuckooFilter) + _allocSize; }
 
  private:  // methods
-  uint16_t* findSlot(uint64_t pos, uint64_t slot) {
+  uint16_t* findSlot(uint64_t pos, uint64_t slot) const {
     char* address = _base + _slotSize * (pos * SlotsPerBucket + slot);
     auto ret = reinterpret_cast<uint16_t*>(address);
     return ret;
   }
 
-  uint64_t hashToPos(uint64_t hash) {
+  uint64_t hashToPos(uint64_t hash) const {
     uint64_t relevantBits = (hash >> _sizeShift) & _sizeMask;
     return ((relevantBits < _size) ? relevantBits : (relevantBits - _size));
   }
 
-  uint16_t keyToFingerprint(Key const& k) {
+  uint16_t keyToFingerprint(Key const& k) const {
     uint64_t hash = _fingerprint(k);
     uint16_t fingerprint = (uint16_t)(
         (hash ^ (hash >> 16) ^ (hash >> 32) ^ (hash >> 48)) & 0xFFFF);
     return (fingerprint ? fingerprint : 1);
   }
 
-  uint64_t _hasherPosFingerprint(uint64_t pos, uint16_t fingerprint) {
+  uint64_t _hasherPosFingerprint(uint64_t pos, uint16_t fingerprint) const {
     return ((pos << _sizeShift) ^ _hasherShort(fingerprint));
   }
 
