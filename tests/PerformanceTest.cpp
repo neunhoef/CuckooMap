@@ -147,11 +147,7 @@ int main(int argc, char* argv[]) {
   double pMiss = atof(argv[10]);
   uint64_t seed = atoll(argv[11]);
 
-  uint64_t nMaxTime = 14400;
-
-  uint64_t nChunkSize = 1000000;  // will keep only the most recent X opcounts
-                                  // to calculate percentiles, where nChunkSize
-                                  // <= X <= 2*nChunkSize
+  int64_t nMaxTime = 14400;
 
   if (nInitialSize > nMaxSize || nWorking > nMaxSize) {
     std::cerr << "Invalid initial/total/working numbers." << std::endl;
