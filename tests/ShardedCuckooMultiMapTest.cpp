@@ -28,7 +28,7 @@ struct Value {
   }
 };
 
-int main(int argc, char* argv[]) {
+int main(int /*argc*/, char* /*argv*/[]) {
   ShardedMap<CuckooMultiMap<Key, Value>> m(16, 8);
   auto insert = [&]() -> void {
     for (int x = 0; x < 10; ++x) {

@@ -52,7 +52,8 @@ class CuckooFilter {
 
  public:
   CuckooFilter(bool useMmap, uint64_t size)
-      : _useMmap(useMmap), _randState(0x2636283625154737ULL) {
+      : _randState(0x2636283625154737ULL),
+        _useMmap(useMmap) { 
     // Sort out offsets and alignments:
     _slotSize = sizeof(uint16_t);
 

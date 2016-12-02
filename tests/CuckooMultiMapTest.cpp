@@ -23,7 +23,7 @@ struct Value {
   Value(int i) : v(i) {}
 };
 
-int main(int argc, char* argv[]) {
+int main(int /*argc*/, char* /*argv*/[]) {
   CuckooMultiMap<Key, Value> m(16);
   auto insert = [&]() -> void {
     for (int x = 1; x < 10; ++x) {
