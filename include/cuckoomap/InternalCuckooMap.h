@@ -46,16 +46,15 @@ template <class Key, class Value,
           class CompKey = std::equal_to<Key>>
 class InternalCuckooMap {
   // Note that the following has to be a power of two!
-  static constexpr uint32_t SlotsPerBucket = 2;
+  static constexpr uint32_t SlotsPerBucket = 4;
 
  public:
   InternalCuckooMap(bool useMmap, uint64_t size,
                     size_t valueSize = sizeof(Value),
                     size_t valueAlign = alignof(Value))
-      : _randState(0x2636283625154737ULL),
-        _valueSize(valueSize),
-        _valueAlign(valueAlign),
-        _useMmap(useMmap) {
+      _longRandState(0x1492918629481928ULL),
+      _randState(0x2636283625154737ULL), _valueSize(valueSize),
+      _valueAlign(valueAlign), _useMmap(useMmap) {
     // Sort out offsets and alignments:
     _valueOffset = sizeof(Key);
     size_t mask = _valueAlign - 1;
@@ -80,6 +79,8 @@ class InternalCuckooMap {
     }
     _sizeMask = _size - 1;
     _sizeShift = (64 - _logSize) / 2;
+    _capacity = _size * SlotsPerBucket;
+    _threshold = (_capacity << 4) - _capacity;
     _allocSize = _size * _slotSize * SlotsPerBucket +
                  64;  // give 64 bytes padding to enable 64-byte alignment
 
@@ -321,9 +322,53 @@ class InternalCuckooMap {
     return true;
   }
 
-  uint64_t capacity() { return _size * SlotsPerBucket; }
+  bool expungeRandom(Key& k, Value* v) {
+    // attempt to expunge a random pair
+    //
+    // If a suitable pair is not found with a few attempts, then false is
+    // returned
+    // and the table is unchanged, in this case k and *v are
+    // also unchanged. Otherwise, true is returned and k and *v are overwritten
+    // with the values of the expunged pair and 1 is returned.
+
+    Key* kTable;
+    Value* vTable;
+
+    uint64_t hash;
+    uint64_t pos;
+    uint64_t slot;
+    bool foundPair = false;
+    for (unsigned i = 0; i < 1024; i++) {
+      hash = pseudoRandomHash();
+      pos = hashToPos(hash);
+      for (slot = 0; slot < SlotsPerBucket; slot++) {
+        kTable = findSlotKey(pos, slot);
+        if (!kTable->empty()) {
+          foundPair = true;
+          break;
+        }
+      }
+      if (foundPair) break;
+    }
+    if (!foundPair) return false;
+
+    kTable = findSlotKey(pos, slot);
+    vTable = findSlotValue(pos, slot);
+    Key kDummy = std::move(*kTable);
+    *kTable = std::move(k);
+    k = std::move(kDummy);
+    std::memcpy(_theBuffer, vTable, _valueSize);
+    std::memcpy(vTable, v, _valueSize);
+    std::memcpy(v, _theBuffer, _valueSize);
+
+    return true;
+  }
+
+  uint64_t capacity() { return _capacity; }
 
   uint64_t nrUsed() { return _nrUsed; }
+
+  uint64_t overfull() { return ((_nrUsed << 4) > _threshold); }
 
   uint64_t maxRounds() { return 2 * _logSize; }
 
@@ -370,8 +415,15 @@ class InternalCuckooMap {
     return static_cast<uint8_t>((_randState >> 37) & 0xff);
   }
 
- private:               // member variables
-  uint64_t _randState;  // pseudo random state for expunging
+  uint64_t pseudoRandomHash() {
+    // https://en.wikipedia.org/wiki/Linear_congruential_generator
+    _longRandState = (48271 * _longRandState % 2147483647);
+    return _longRandState;
+  }
+
+ private:                   // member variables
+  uint64_t _randState;      // pseudo random state for local expunging
+  uint64_t _longRandState;  // pseudo random state for random expunging
 
   size_t _valueSize;    // size in bytes reserved for one element
   size_t _valueAlign;   // alignment for value type
@@ -388,9 +440,11 @@ class InternalCuckooMap {
   char* _base;  // pointer to allocated space, 64-byte aligned
   char _tmpFileName[L_tmpnam + 1];
   int _tmpFile;
-  char* _allocBase;  // base of original allocation
-  char* _theBuffer;  // pointer to an area of size _valueSize for value swap
-  uint64_t _nrUsed;  // number of pairs stored in the table
+  char* _allocBase;     // base of original allocation
+  char* _theBuffer;     // pointer to an area of size _valueSize for value swap
+  uint64_t _nrUsed;     // number of pairs stored in the table
+  uint64_t _capacity;   // number of slots
+  uint64_t _threshold;  // used for overfull() calculation
 
   HashKey1 _hasher1;  // Instance to compute the first hash function
   HashKey2 _hasher2;  // Instance to compute the second hash function
