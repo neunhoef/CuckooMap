@@ -60,9 +60,9 @@ class CuckooMap {
         _valueSize(valueSize),
         _valueAlign(valueAlign),
         _randState(0x2636283625154737ULL),
+        _dummyFilter(false, 0),
         _nrUsed(0),
-        _useFilters(useFilters),
-        _dummyFilter(false, 0) {
+        _useFilters(useFilters) {
     auto t = new Subtable(false, firstSize, valueSize, valueAlign);
     try {
       _tables.emplace_back(t);
@@ -204,7 +204,7 @@ class CuckooMap {
     // already a pair with the same key k in the table, in which case
     // the table is unchanged.
     MyMutexGuard guard(_mutex);
-    return innerInsert(k, v, nullptr, true);
+    return innerInsert(k, v, nullptr, -1);
   }
 
   bool insert(Key const& k, Value const* v, Finding& f) {
@@ -213,7 +213,7 @@ class CuckooMap {
       f._map = this;
       _mutex.lock();
     }
-    bool res = innerInsert(k, v, nullptr, true);
+    bool res = innerInsert(k, v, nullptr, -1);
     f._key = nullptr;
     return res;
   }
@@ -266,7 +266,7 @@ class CuckooMap {
         f._key = key;
         f._value = value;
         f._layer = layer;
-        if (moveToFront && layer != 0) {
+        if (moveToFront && layer > 0) {
           uint8_t fromBack = _tables.size() - layer;
           uint8_t denominator = (fromBack >= 6) ? (2 << 6) : (2 << fromBack);
           uint8_t mask = denominator - 1;
@@ -277,7 +277,7 @@ class CuckooMap {
             Value* vCopy = reinterpret_cast<Value*>(&buffer);
 
             innerRemove(f);
-            innerInsert(kCopy, vCopy, &f, false);
+            innerInsert(kCopy, vCopy, &f, layer - 1);
           }
         }
         return;
@@ -285,7 +285,7 @@ class CuckooMap {
     }
   }
 
-  bool innerInsert(Key const& k, Value const* v, Finding* f, bool coldInsert) {
+  bool innerInsert(Key const& k, Value const* v, Finding* f, int layerHint) {
     // inserts a pair (k, v) into the table
     // returns true if the insertion took place and false if there was
     // already a pair with the same key k in the table, in which case
@@ -298,13 +298,15 @@ class CuckooMap {
     memcpy(buffer, v, _valueSize);
     Value* vCopy = reinterpret_cast<Value*>(&buffer);
 
-    int32_t layer = coldInsert ? (_tables.size() - 1) : 0;
+    int32_t lastLayer = _tables.size() - 1;
+    int32_t layer = (layerHint < 0) ? lastLayer : layerHint;
     int res;
     bool filterRes;
+    bool somethingExpunged = true;
     while (static_cast<uint32_t>(layer) < _tables.size()) {
       Subtable& sub = *_tables[layer];
       Filter& filter = _useFilters ? *_filters[layer] : _dummyFilter;
-      int maxRounds = coldInsert ? sub.maxRounds() : 8;
+      int maxRounds = (layerHint < 0) ? 128 : 4;
       for (int i = 0; i < maxRounds; ++i) {
         if (f != nullptr && _compKey(originalKey, kCopy)) {
           res = sub.insert(kCopy, vCopy, &(f->_key), &(f->_value));
@@ -322,26 +324,40 @@ class CuckooMap {
             }
           }
           ++_nrUsed;
-          return true;
+          somethingExpunged = false;
+          break;
         }
       }
-      if (_useFilters && !_compKey(kCopy, originalKeyAtLayer)) {
-        filterRes = filter.remove(kCopy);
-        if (!filterRes) {
+      // check if table is too full; if so, expunge a random element
+      if (!somethingExpunged && sub.overfull()) {
+        bool expunged = sub.expungeRandom(kCopy, vCopy);
+        if (!expunged) {
           throw;
         }
-        filterRes = filter.insert(originalKeyAtLayer);
-        if (!filterRes) {
-          throw;
-        }
-        originalKeyAtLayer = kCopy;
+        somethingExpunged = true;
       }
-      ++layer;
+      if (somethingExpunged) {
+        if (_useFilters && !_compKey(kCopy, originalKeyAtLayer)) {
+          filterRes = filter.remove(kCopy);
+          if (!filterRes) {
+            throw;
+          }
+          filterRes = filter.insert(originalKeyAtLayer);
+          if (!filterRes) {
+            throw;
+          }
+          originalKeyAtLayer = kCopy;
+        }
+        layer = (layer == lastLayer) ? layer + 1 : lastLayer;
+      } else {
+        return true;
+      }
     }
     // If we get here, then some pair has been expunged from all tables and
     // we have to append a new table:
     uint64_t lastSize = _tables.back()->capacity();
-    /*std::cout << "Insertion failure at level " << _tables.size() - 1 << " at "
+    /*std::cout << "Insertion failure at level " << _tables.size() - 1 << " at
+       "
               << 100.0 *
                      (((double)_tables.back()->nrUsed()) / ((double)lastSize))
               << "% capacity with cold " << coldInsert << std::endl;*/

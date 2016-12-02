@@ -25,7 +25,7 @@ struct Value {
   bool empty() { return v == 0; }
 };
 
-int main(int argc, char* argv[]) {
+int main(int /*argc*/, char* /*argv*/[]) {
   InternalCuckooMap<Key, Value> m(false, 1000);
   auto insert = [&]() -> void {
     for (int i = 1; i < 100; ++i) {

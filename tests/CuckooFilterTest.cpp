@@ -18,7 +18,7 @@ struct equal_to<Key> {
 };
 }
 
-int main(int argc, char* argv[]) {
+int main(int /*argc*/, char* /*argv*/[]) {
   CuckooFilter<Key> m(false, 100);
   auto insert = [&]() -> void {
     for (int i = 0; i < 100; ++i) {
