@@ -216,6 +216,8 @@ int main(int argc, char* argv[]) {
     k = new Key(current);
     v = new Value(current);
     success = map.insert(*k, v);
+    delete k;
+    delete v;
     if (!success) {
       std::cout << "Failed to insert " << current << " with range ("
                 << minElement << ", " << maxElement << ")" << std::endl;
@@ -241,6 +243,8 @@ int main(int argc, char* argv[]) {
         currentStart = std::chrono::high_resolution_clock::now();
         success = map.insert(*k, v);
         currentFinish = std::chrono::high_resolution_clock::now();
+        delete k;
+        delete v;
         if (!success) {
           std::cout << "Failed to insert " << current << " with range ("
                     << minElement << ", " << maxElement << ")" << std::endl;
@@ -252,8 +256,6 @@ int main(int argc, char* argv[]) {
                          1);
           // std::cout << "Inserted " << current << std::endl;
         }
-        delete k;
-        delete v;
         break;
       case 1:
         // lookup

@@ -60,9 +60,9 @@ class CuckooMap {
         _valueSize(valueSize),
         _valueAlign(valueAlign),
         _randState(0x2636283625154737ULL),
+        _dummyFilter(false, 0),
         _nrUsed(0),
-        _useFilters(useFilters),
-        _dummyFilter(false, 0) {
+        _useFilters(useFilters) {
     auto t = new Subtable(false, firstSize, valueSize, valueAlign);
     try {
       _tables.emplace_back(t);
