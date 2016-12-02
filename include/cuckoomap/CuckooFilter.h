@@ -52,9 +52,9 @@ class CuckooFilter {
 
  public:
   CuckooFilter(bool useMmap, uint64_t size)
-      : _useMmap(useMmap), _randState(0x2636283625154737ULL) {
-    // Sort out offsets and alignments:
-    _slotSize = sizeof(uint16_t);
+      : _useMmap(useMmap), 
+        _slotSize(sizeof(uint16_t)), // Sort out offsets and alignments
+        _randState(0x2636283625154737ULL) {
 
     // Inflate size so that we have some padding to avoid failure
     size *= 2.0;
@@ -206,16 +206,14 @@ class CuckooFilter {
     if ((r & 1) != 0) {
       std::swap(pos1, pos2);
     }
-    uint64_t i;
-    uint16_t fDummy;
     for (unsigned attempt = 0; attempt < _maxRounds; attempt++) {
       std::swap(pos1, pos2);
       // Now expunge a random element from any of these slots:
       r = pseudoRandomChoice();
-      i = r & (SlotsPerBucket - 1);
+      uint64_t i = r & (SlotsPerBucket - 1);
       // We expunge the element at position pos1 and slot i:
       fTable = findSlot(pos1, i);
-      fDummy = *fTable;
+      uint16_t fDummy = *fTable;
       *fTable = fingerprint;
       fingerprint = fDummy;
 

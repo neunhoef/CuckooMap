@@ -55,9 +55,8 @@ class InternalCuckooMap {
       : _useMmap(useMmap),
         _randState(0x2636283625154737ULL),
         _valueSize(valueSize),
-        _valueAlign(valueAlign) {
-    // Sort out offsets and alignments:
-    _valueOffset = sizeof(Key);
+        _valueAlign(valueAlign),
+        _valueOffset(sizeof(Key)) { // Sort out offsets and alignments:
     size_t mask = _valueAlign - 1;
     _valueOffset = (_valueOffset + _valueAlign - 1) & (~mask);
     size_t keyAlign = alignof(Key);
