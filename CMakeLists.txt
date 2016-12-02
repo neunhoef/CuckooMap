@@ -4,12 +4,14 @@ project(CuckooMap)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 11)
 
-add_library(qdigest INTERFACE)
-target_include_directories(qdigest INTERFACE 3rdParty/qdigest)
-
 #list(APPEND CMAKE_CXX_FLAGS "-fprofile-arcs -ftest-coverage -DNDEBUG ${CMAKE_CXX_FLAGS}")
 #list(APPEND CMAKE_EXE_LINKER_FLAGS "-O0 -g -fprofile-arcs -ftest-coverage -DNDEBUG ${CMAKE_EXE_LINKER_FLAGS}")
 
+add_library(qdigest INTERFACE)
+target_include_directories(qdigest INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/3rdParty/qdigest)
+
+add_library(rocksdb INTERFACE)
+target_include_directories(rocksdb INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/3rdParty/rocksdb/include)
 
 add_library(cuckoo INTERFACE)
 target_include_directories(cuckoo INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/include")
@@ -47,7 +49,12 @@ target_link_libraries(ShardedCuckooMultiMapTest PRIVATE cuckoo)
 add_executable(PerformanceTest
     tests/PerformanceTest.cpp
 )
-target_link_libraries(PerformanceTest PRIVATE cuckoo qdigest)
+target_link_libraries(PerformanceTest PRIVATE
+    cuckoo
+    qdigest
+    rocksdb
+    ${CMAKE_CURRENT_SOURCE_DIR}/3rdParty/rocksdb/librocksdb.a
+)
 
 add_custom_command(TARGET PerformanceTest PRE_BUILD
                    COMMAND ${CMAKE_COMMAND} -E copy_directory

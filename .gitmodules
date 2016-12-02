@@ -1,3 +1,6 @@
 [submodule "3rdParty/qdigest"]
 	path = 3rdParty/qdigest
 	url = https://github.com/danielhlarkin/q-digest.git
+[submodule "3rdParty/rocksdb"]
+	path = 3rdParty/rocksdb
+	url = https://github.com/facebook/rocksdb.git
