@@ -10,6 +10,10 @@
 
 #include <cuckoomap/CuckooHelpers.h>
 #include <cuckoomap/CuckooMap.h>
+// MAX: Good to use something for the digest here, but depending on the
+// license, we should copy their code or at least make it clear for users
+// of this repo here, how to get the code. To begin with, at least the
+// README should say what we are using here.
 #include <qdigest.h>
 
 #define MAX(a, b) (((a) >= (b)) ? (a) : (b))
@@ -94,8 +98,16 @@ class TestMap {
   Value* lookup(Key const& k) {
     if (_useCuckoo) {
       auto element = _cuckoo.lookup(k);
+      // MAX: This is dangereous, since when 
+      //   Finding element;
+      // goes out of scope we release the lock and the pointer element.value()
+      // can become invalid at essentially any time. For this test, it is
+      // probably not critical.
       return (element.found() ? element.value() : nullptr);
     } else {
+      // MAX: The CuckooMap does mutex locking, unordered_map not, so we have
+      // to be aware that this is not a really fair comparison. No need to
+      // act now, but we need to keep it in mind.
       auto element = _unordered.find(k);
       return (element != _unordered.end()) ? (*element).second : nullptr;
     }
@@ -207,6 +219,9 @@ int main(int argc, char* argv[]) {
       if (std::chrono::duration_cast<std::chrono::seconds>(now - insertStart)
               .count() > nMaxTime) {
         // took too long to do initial insertions, move on to measurements
+        // MAX: We should probably at least write out a warning here, 
+        // otherwise we do not know whether the intended test has actually
+        // be done!
         break;
       }
       current = maxElement++;
@@ -235,6 +250,9 @@ int main(int argc, char* argv[]) {
           }
 
           current = maxElement++;
+          // MAX: Should we not allocate Key and Value on the stack, because
+          // these allocations take time in their own right. Since the maps
+          // copy stuff into their own storage, we should be fine?
           k = new Key(current);
           v = new Value(current);
           currentStart = std::chrono::high_resolution_clock::now();
@@ -268,6 +286,7 @@ int main(int argc, char* argv[]) {
                             : minElement + r.nextInRange(nHot);
           }
 
+          // MAX: Same as above, save an allocation here.
           k = new Key(current);
           currentStart = std::chrono::high_resolution_clock::now();
           v = map.lookup(current);
@@ -285,6 +304,7 @@ int main(int argc, char* argv[]) {
           }
           current = working.next() ? minElement++ : --maxElement;
 
+          // MAX: Same as above, save an allocation here.
           k = new Key(current);
           currentStart = std::chrono::high_resolution_clock::now();
           success = map.remove(current);
