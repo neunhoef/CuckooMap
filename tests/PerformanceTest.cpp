@@ -139,35 +139,64 @@ static bool auIsEqualElementElementByKey(void*, Element const& e1,
 class TestMap {
  private:
   int _mapType;
-  CuckooMap<Key, Value> _cuckoo;
-  unordered_map_for_key _unordered;
-  AssocUnique _assocUnique;
-  std::string _rocksDbFolder;
+  CuckooMap<Key, Value>* _cuckoo;
+  unordered_map_for_key* _unordered;
+  AssocUnique* _assocUnique;
   rocksdb::DB* _rocksDb;
+  std::string _rocksDbFolder;
   rocksdb::Status _rdStatus;
 
  public:
   TestMap(int mapType, size_t initialSize)
-      : _mapType(mapType),
-        _cuckoo(initialSize),
-        _unordered(initialSize),
-        _rocksDbFolder("/tmp/rocksdbperftest"),
-        _assocUnique(auHashKey, auHashElement, auIsEqualKeyElement,
-                     auIsEqualElementElement, auIsEqualElementElementByKey,
-                     initialSize) {
-    rocksdb::BlockBasedTableOptions table_options;
-    table_options.block_cache =
-        rocksdb::NewLRUCache(100 * 1048576);  // 100MB uncompressed cache
-    rocksdb::Options options;
-    options.table_factory.reset(
-        rocksdb::NewBlockBasedTableFactory(table_options));
-    options.create_if_missing = true;
-    _rdStatus = rocksdb::DB::Open(options, _rocksDbFolder, &_rocksDb);
-    assert(_rdStatus.ok());
+      : _mapType(mapType), _rocksDbFolder("/tmp/rocksdbperftest") {
+    switch (_mapType) {
+      case MAP_TYPE_CUCKOO: {
+        _cuckoo = new CuckooMap<Key, Value>(initialSize);
+        break;
+      }
+      case MAP_TYPE_UNORDERED: {
+        _unordered = new unordered_map_for_key(initialSize);
+        break;
+      }
+      case MAP_TYPE_ASSOC_UNIQUE: {
+        _assocUnique = new AssocUnique(
+            auHashKey, auHashElement, auIsEqualKeyElement,
+            auIsEqualElementElement, auIsEqualElementElementByKey, initialSize);
+        break;
+      }
+      case MAP_TYPE_ROCKSDB: {
+        rocksdb::BlockBasedTableOptions table_options;
+        table_options.block_cache =
+            rocksdb::NewLRUCache(100 * 1048576);  // 100MB uncompressed cache
+        rocksdb::Options options;
+        options.table_factory.reset(
+            rocksdb::NewBlockBasedTableFactory(table_options));
+        options.create_if_missing = true;
+        _rdStatus = rocksdb::DB::Open(options, _rocksDbFolder, &_rocksDb);
+        assert(_rdStatus.ok());
+      }
+    }
   }
   ~TestMap() {
-    delete _rocksDb;
-    remove_directory(reinterpret_cast<const char*>(&_rocksDbFolder[0]));
+    switch (_mapType) {
+      case MAP_TYPE_CUCKOO: {
+        delete _cuckoo;
+        break;
+      }
+      case MAP_TYPE_UNORDERED: {
+        delete _unordered;
+        break;
+      }
+      case MAP_TYPE_ASSOC_UNIQUE: {
+        delete _assocUnique;
+        break;
+      }
+      case MAP_TYPE_ROCKSDB: {
+        delete _rocksDb;
+        remove_directory(reinterpret_cast<const char*>(&_rocksDbFolder[0]));
+        break;
+      }
+    }
   }
   Value lookup(Key const& k) {
     Value noV(0);
@@ -178,18 +207,18 @@ class TestMap {
         // goes out of scope we release the lock and the pointer element.value()
         // can become invalid at essentially any time. For this test, it is
         // probably not critical.
-        auto element = _cuckoo.lookup(k);
+        auto element = _cuckoo->lookup(k);
         return (element.found() ? *(element.value()) : noV);
       }
       case MAP_TYPE_UNORDERED: {
         // MAX: The CuckooMap does mutex locking, unordered_map not, so we have
         // to be aware that this is not a really fair comparison. No need to
         // act now, but we need to keep it in mind.
-        auto element = _unordered.find(k);
-        return (element != _unordered.end()) ? *((*element).second) : noV;
+        auto element = _unordered->find(k);
+        return (element != _unordered->end()) ? *((*element).second) : noV;
       }
       case MAP_TYPE_ASSOC_UNIQUE: {
-        auto element = _assocUnique.findByKey(nullptr, &k);
+        auto element = _assocUnique->findByKey(nullptr, &k);
         return (!element.empty() ? element.value() : noV);
       }
       case MAP_TYPE_ROCKSDB: {
@@ -209,12 +238,12 @@ class TestMap {
   bool insert(Key const& k, Value* v) {
     switch (_mapType) {
       case MAP_TYPE_CUCKOO:
-        return _cuckoo.insert(k, v);
+        return _cuckoo->insert(k, v);
       case MAP_TYPE_UNORDERED:
-        return _unordered.emplace(k, v).second;
+        return _unordered->emplace(k, v).second;
       case MAP_TYPE_ASSOC_UNIQUE: {
         Element e(k, *v);
-        return (_assocUnique.insert(nullptr, e) == TRI_ERROR_NO_ERROR);
+        return (_assocUnique->insert(nullptr, e) == TRI_ERROR_NO_ERROR);
       }
       case MAP_TYPE_ROCKSDB: {
         rocksdb::Slice kSlice(
@@ -230,11 +259,11 @@ class TestMap {
   bool remove(Key const& k) {
     switch (_mapType) {
       case MAP_TYPE_CUCKOO:
-        return _cuckoo.remove(k);
+        return _cuckoo->remove(k);
       case MAP_TYPE_UNORDERED:
-        return (_unordered.erase(k) > 0);
+        return (_unordered->erase(k) > 0);
       case MAP_TYPE_ASSOC_UNIQUE:
-        return !((_assocUnique.removeByKey(nullptr, &k)).empty());
+        return !((_assocUnique->removeByKey(nullptr, &k)).empty());
       case MAP_TYPE_ROCKSDB: {
         rocksdb::Slice kSlice(
             const_cast<char*>(reinterpret_cast<const char*>(&k)), sizeof(Key));

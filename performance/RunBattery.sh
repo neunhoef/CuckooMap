@@ -20,7 +20,7 @@ do
   for mapType in {0..3}
   do
     params=$(echo $item | sed 's/,/ /g')
-    command=$(echo '../PerformanceTest' $useCuckoo $params $seed $ramThreshold)
+    command=$(echo '../PerformanceTest' $mapType $params $seed $ramThreshold)
     result=$(eval $command)
     echo $result >> $outputFile
   done
