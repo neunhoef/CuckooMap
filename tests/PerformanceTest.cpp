@@ -12,6 +12,10 @@
 #include <cuckoomap/CuckooHelpers.h>
 #include <cuckoomap/CuckooMap.h>
 #include <qdigest.h>
+#include <rocksdb/cache.h>
+#include <rocksdb/db.h>
+#include <rocksdb/slice.h>
+#include <rocksdb/table.h>
 
 #define MAX(a, b) (((a) >= (b)) ? (a) : (b))
 #define MIN(a, b) (((a) <= (b)) ? (a) : (b))
@@ -138,15 +142,33 @@ class TestMap {
   CuckooMap<Key, Value> _cuckoo;
   unordered_map_for_key _unordered;
   AssocUnique _assocUnique;
+  std::string _rocksDbFolder;
+  rocksdb::DB* _rocksDb;
+  rocksdb::Status _rdStatus;
 
  public:
   TestMap(int mapType, size_t initialSize)
       : _mapType(mapType),
         _cuckoo(initialSize),
         _unordered(initialSize),
+        _rocksDbFolder("/tmp/rocksdbperftest"),
         _assocUnique(auHashKey, auHashElement, auIsEqualKeyElement,
                      auIsEqualElementElement, auIsEqualElementElementByKey,
-                     initialSize) {}
+                     initialSize) {
+    rocksdb::BlockBasedTableOptions table_options;
+    table_options.block_cache =
+        rocksdb::NewLRUCache(100 * 1048576);  // 100MB uncompressed cache
+    rocksdb::Options options;
+    options.table_factory.reset(
+        rocksdb::NewBlockBasedTableFactory(table_options));
+    options.create_if_missing = true;
+    _rdStatus = rocksdb::DB::Open(options, _rocksDbFolder, &_rocksDb);
+    assert(_rdStatus.ok());
+  }
+  ~TestMap() {
+    delete _rocksDb;
+    remove_directory(reinterpret_cast<const char*>(&_rocksDbFolder[0]));
+  }
   Value lookup(Key const& k) {
     Value noV(0);
     switch (_mapType) {
@@ -170,6 +192,18 @@ class TestMap {
         auto element = _assocUnique.findByKey(nullptr, &k);
         return (!element.empty() ? element.value() : noV);
       }
+      case MAP_TYPE_ROCKSDB: {
+        rocksdb::Slice kSlice(
+            const_cast<char*>(reinterpret_cast<const char*>(&k)), sizeof(Key));
+        std::string vSlice(sizeof(Value), '\0');
+        _rdStatus = _rocksDb->Get(rocksdb::ReadOptions(), kSlice, &vSlice);
+        if (_rdStatus.ok()) {
+          Value v(*reinterpret_cast<const uint64_t*>(&vSlice[0]));
+          return v;
+        } else {
+          return noV;
+        }
+      }
     }
   }
   bool insert(Key const& k, Value* v) {
@@ -182,6 +216,15 @@ class TestMap {
         Element e(k, *v);
         return (_assocUnique.insert(nullptr, e) == TRI_ERROR_NO_ERROR);
       }
+      case MAP_TYPE_ROCKSDB: {
+        rocksdb::Slice kSlice(
+            const_cast<char*>(reinterpret_cast<const char*>(&k)), sizeof(Key));
+        rocksdb::Slice vSlice(
+            const_cast<char*>(reinterpret_cast<const char*>(&v)),
+            sizeof(Value));
+        _rdStatus = _rocksDb->Put(rocksdb::WriteOptions(), kSlice, vSlice);
+        return _rdStatus.ok();
+      }
     }
   }
   bool remove(Key const& k) {
@@ -192,6 +235,12 @@ class TestMap {
         return (_unordered.erase(k) > 0);
       case MAP_TYPE_ASSOC_UNIQUE:
         return !((_assocUnique.removeByKey(nullptr, &k)).empty());
+      case MAP_TYPE_ROCKSDB: {
+        rocksdb::Slice kSlice(
+            const_cast<char*>(reinterpret_cast<const char*>(&k)), sizeof(Key));
+        _rdStatus = _rocksDb->Delete(rocksdb::WriteOptions(), kSlice);
+        return _rdStatus.ok();
+      }
     }
   }
 };
@@ -213,8 +262,11 @@ class TestMap {
 //    [pWorking]: Probability of operation staying in working set
 //    [pMiss]: Probability of lookup for missing element
 //    [seed]: Seed for PRNG
+//    [ramThreshold]: Maximum number of elements for in-RAM structures; if
+//                    expected dataset is larger, bail out with defaults to
+//                    indicate failure
 int main(int argc, char* argv[]) {
-  if (argc < 12) {
+  if (argc < 13) {
     std::cerr << "Incorrect number of parameters." << std::endl;
     return -1;
   }
@@ -230,8 +282,20 @@ int main(int argc, char* argv[]) {
   double pWorking = atof(argv[9]);
   double pMiss = atof(argv[10]);
   uint64_t seed = atoll(argv[11]);
+  uint64_t ramThreshold = atoll(argv[12]);
 
   int64_t nMaxTime = 14400;
+
+  auto printDefault = [&]() {
+    std::cout << "0,0,0,0,0,0,0,0,0,0,0,0,0" << std::endl;
+  };
+
+  if (mapType == MAP_TYPE_UNORDERED || mapType == MAP_TYPE_ASSOC_UNIQUE) {
+    if (nInitialSize + (uint64_t)(pInsert * nOpCount) > ramThreshold) {
+      printDefault();
+      return 0;
+    }
+  }
 
   if (nInitialSize > nMaxSize || nWorking > nMaxSize) {
     std::cerr << "Invalid initial/total/working numbers." << std::endl;
@@ -295,11 +359,9 @@ int main(int argc, char* argv[]) {
         break;
       }
       current = maxElement++;
-      k = new Key(current);
-      v = new Value(current);
-      success = map.insert(*k, v);
-      delete k;
-      delete v;
+      Key k(current);
+      Value v(current);
+      success = map.insert(k, &v);
       if (!success) {
         std::cout << "Failed to insert " << current << " with range ("
                   << minElement << ", " << maxElement << ")" << std::endl;
@@ -313,7 +375,7 @@ int main(int argc, char* argv[]) {
     for (uint64_t i = 0; i < nOpCount; i++) {
       opCode = operations.next();
       switch (opCode) {
-        case 0:
+        case 0: {
           // insert if allowed
           if (maxElement - minElement >= nMaxSize) {
             break;
@@ -323,13 +385,11 @@ int main(int argc, char* argv[]) {
           // MAX: Should we not allocate Key and Value on the stack, because
           // these allocations take time in their own right. Since the maps
           // copy stuff into their own storage, we should be fine?
-          k = new Key(current);
-          v = new Value(current);
+          Key k(current);
+          Value v(current);
           currentStart = std::chrono::high_resolution_clock::now();
-          success = map.insert(*k, v);
+          success = map.insert(k, &v);
           currentFinish = std::chrono::high_resolution_clock::now();
-          delete k;
-          delete v;
           if (!success) {
             std::cout << "Failed to insert " << current << " with range ("
                       << minElement << ", " << maxElement << ")" << std::endl;
@@ -342,7 +402,8 @@ int main(int argc, char* argv[]) {
             // std::cout << "Inserted " << current << std::endl;
           }
           break;
-        case 1:
+        }
+        case 1: {
           // lookup
           barrier = MIN(minElement + nWorking, maxElement);
           nHot = barrier - minElement;
@@ -356,18 +417,17 @@ int main(int argc, char* argv[]) {
                             : minElement + r.nextInRange(nHot);
           }
 
-          // MAX: Same as above, save an allocation here.
-          k = new Key(current);
+          Key k(current);
           currentStart = std::chrono::high_resolution_clock::now();
           dummyValue = map.lookup(current);
           currentFinish = std::chrono::high_resolution_clock::now();
-          delete k;
           digestL.insert(std::chrono::duration_cast<std::chrono::nanoseconds>(
                              currentFinish - currentStart)
                              .count(),
                          1);
           break;
-        case 2:
+        }
+        case 2: {
           // remove if allowed
           if (minElement >= maxElement) {
             break;
@@ -375,11 +435,10 @@ int main(int argc, char* argv[]) {
           current = working.next() ? minElement++ : --maxElement;
 
           // MAX: Same as above, save an allocation here.
-          k = new Key(current);
+          Key k(current);
           currentStart = std::chrono::high_resolution_clock::now();
           success = map.remove(current);
           currentFinish = std::chrono::high_resolution_clock::now();
-          delete k;
           if (!success) {
             std::cout << "Failed to remove " << current << " with range ("
                       << minElement << ", " << maxElement << ")" << std::endl;
@@ -392,8 +451,8 @@ int main(int argc, char* argv[]) {
             // std::cout << "Removed " << current << std::endl;
           }
           break;
-        default:
-          break;
+        }
+        default: { break; }
       }
     }
 
@@ -408,7 +467,8 @@ int main(int argc, char* argv[]) {
               << digestR.percentile(0.990) << "," << digestR.percentile(0.999)
               << std::endl;
   } catch (std::bad_alloc) {
-    std::cout << "0,0,0,0,0,0,0,0,0,0,0,0,0" << std::endl;
+    printDefault();
+    return 0;
   }
 
   return 0;

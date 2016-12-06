@@ -8,14 +8,16 @@ if [ -f $outputFile ] ; then
 fi
 
 IFS=$'\n'; set -f; list=($(<$inputFile))
-numResults=$(expr ${#list[@]} / 3)
+numResults=$(expr ${#list[@]} / 5)
 echo '# Results' >> $outputFile
 echo '' >> $outputFile
 for i in $(seq 0 $(expr $numResults - 1 ))
 do
-  IFS=',' read -ra params <<< ${list[$(expr 3 * $i)]}
-  IFS=',' read -ra umResults <<< ${list[$(expr $(expr 3 * $i) + 1)]}
-  IFS=',' read -ra cmResults <<< ${list[$(expr $(expr 3 * $i) + 2)]}
+  IFS=',' read -ra params <<< ${list[$(expr 5 * $i)]}
+  IFS=',' read -ra cmResults <<< ${list[$(expr $(expr 5 * $i) + 1)]}
+  IFS=',' read -ra umResults <<< ${list[$(expr $(expr 5 * $i) + 2)]}
+  IFS=',' read -ra auResults <<< ${list[$(expr $(expr 5 * $i) + 3)]}
+  IFS=',' read -ra rdResults <<< ${list[$(expr $(expr 5 * $i) + 4)]}
   echo '## Result Set' $i >> $outputFile
   echo '' >> $outputFile
   echo '### Simulation Parameters' >> $outputFile
@@ -26,16 +28,37 @@ do
   echo '' >> $outputFile
   echo '### Final Table Size' >> $outputFile
   echo '' >> $outputFile
-  echo '| `UM` | `CM` |' >> $outputFile
-  echo '| --- | --- |' >> $outputFile
-  echo '|' ${umResults[0]} '|' ${cmResults[0]} '|' >> $outputFile
+  echo '| `CM` | `UM` | `AU` | `RD` |' >> $outputFile
+  echo '| --- | --- | --- | --- |' >> $outputFile
+  echo '|' ${umResults[0]} '|' ${cmResults[0]} '|' ${auResults[0]} '|' ${rdResults[0]} '|' >> $outputFile
   echo '' >> $outputFile
   echo '### Operation Latencies' >> $outputFile
   echo '' >> $outputFile
-  echo '| | UM 50.0p | UM 95.0p | UM 99.0p | UM 99.9p | CM 50.0p | CM 95.0p | CM 99.0p | CM 99.9p |' >> $outputFile
-  echo '| --- | --- | --- | --- | --- | --- | --- | --- | --- |' >> $outputFile
-  echo '| **`insert`** |' ${umResults[1]} '|' ${umResults[2]} '|' ${umResults[3]} '|' ${umResults[4]} '|' ${cmResults[1]} '|'  ${cmResults[2]} '|'  ${cmResults[3]} '|'  ${cmResults[4]} '|' >> $outputFile
-  echo '| **`lookup`** |' ${umResults[5]} '|' ${umResults[6]} '|' ${umResults[7]} '|' ${umResults[8]} '|' ${cmResults[5]} '|'  ${cmResults[6]} '|'  ${cmResults[7]} '|'  ${cmResults[8]} '|' >> $outputFile
-  echo '| **`remove`** |' ${umResults[9]} '|' ${umResults[10]} '|' ${umResults[11]} '|' ${umResults[12]} '|' ${cmResults[9]} '|'  ${cmResults[10]} '|'  ${cmResults[11]} '|'  ${cmResults[12]} '|' >> $outputFile
+  echo '#### **`insert`**' >> $outputFile
+  echo '' >> $outputFile
+  echo '| | 50.0p | 95.0p | 99.0p | 99.9p |' >> $outputFile
+  echo '| --- | --- | --- | --- | --- |' >> $outputFile
+  echo '| **CM** |' ${cmResults[1]} '|' ${cmResults[2]} '|' ${cmResults[3]} '|'  ${cmResults[4]} '|' >> $outputFile
+  echo '| **UM** |' ${umResults[1]} '|' ${umResults[2]} '|' ${umResults[3]} '|' ${umResults[4]} '|' >> $outputFile
+  echo '| **AU** |' ${auResults[1]} '|' ${auResults[2]} '|' ${auResults[3]} '|' ${auResults[4]} '|' >> $outputFile
+  echo '| **RD** |' ${rdResults[1]} '|' ${rdResults[2]} '|' ${rdResults[3]} '|' ${rdResults[4]} '|' >> $outputFile
+  echo '' >> $outputFile
+  echo '#### **`lookup`**' >> $outputFile
+  echo '' >> $outputFile
+  echo '| | 50.0p | 95.0p | 99.0p | 99.9p |' >> $outputFile
+  echo '| --- | --- | --- | --- | --- |' >> $outputFile
+  echo '| **CM** |' ${cmResults[5]} '|' ${cmResults[6]} '|' ${cmResults[7]} '|'  ${cmResults[8]} '|' >> $outputFile
+  echo '| **UM** |' ${umResults[5]} '|' ${umResults[6]} '|' ${umResults[7]} '|' ${umResults[8]} '|' >> $outputFile
+  echo '| **AU** |' ${auResults[5]} '|' ${auResults[6]} '|' ${auResults[7]} '|' ${auResults[8]} '|' >> $outputFile
+  echo '| **RD** |' ${rdResults[5]} '|' ${rdResults[6]} '|' ${rdResults[7]} '|' ${rdResults[8]} '|' >> $outputFile
+  echo '' >> $outputFile
+  echo '#### **`remove`**' >> $outputFile
+  echo '' >> $outputFile
+  echo '| | 50.0p | 95.0p | 99.0p | 99.9p |' >> $outputFile
+  echo '| --- | --- | --- | --- | --- |' >> $outputFile
+  echo '| **CM** |' ${cmResults[9]} '|' ${cmResults[10]} '|' ${cmResults[11]} '|'  ${cmResults[12]} '|' >> $outputFile
+  echo '| **UM** |' ${umResults[9]} '|' ${umResults[10]} '|' ${umResults[11]} '|' ${umResults[12]} '|' >> $outputFile
+  echo '| **AU** |' ${auResults[9]} '|' ${auResults[10]} '|' ${auResults[11]} '|' ${auResults[12]} '|' >> $outputFile
+  echo '| **RD** |' ${rdResults[9]} '|' ${rdResults[10]} '|' ${rdResults[11]} '|' ${rdResults[12]} '|' >> $outputFile
   echo '' >> $outputFile
 done

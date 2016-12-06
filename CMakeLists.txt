@@ -2,7 +2,11 @@ cmake_minimum_required(VERSION 3.0)
 project(CuckooMap)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 14)
+
+find_package(Threads REQUIRED)
+find_package(ZLIB REQUIRED)
+find_package(BZip2 REQUIRED)
 
 #list(APPEND CMAKE_CXX_FLAGS "-fprofile-arcs -ftest-coverage -DNDEBUG ${CMAKE_CXX_FLAGS}")
 #list(APPEND CMAKE_EXE_LINKER_FLAGS "-O0 -g -fprofile-arcs -ftest-coverage -DNDEBUG ${CMAKE_EXE_LINKER_FLAGS}")
@@ -50,10 +54,15 @@ add_executable(PerformanceTest
     tests/PerformanceTest.cpp
 )
 target_link_libraries(PerformanceTest PRIVATE
-    cuckoo
-    qdigest
-    rocksdb
+    ${CMAKE_THREAD_LIBS_INIT}
     ${CMAKE_CURRENT_SOURCE_DIR}/3rdParty/rocksdb/librocksdb.a
+    ${ZLIB_LIBRARIES}
+    ${BZIP2_LIBRARIES}
+    snappy
+    -ldl
+    rocksdb
+    qdigest
+    cuckoo
 )
 
 add_custom_command(TARGET PerformanceTest PRE_BUILD

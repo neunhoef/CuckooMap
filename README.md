@@ -16,7 +16,7 @@ the same interface:
       - cascade of `InternalCuckooMap`s, each constant size
       - sizes grow exponentially
       - hot set is heuristically kept in the early, smaller tables
-      - Cuckoo filters are used to have a fast path if a key is not in
+      - Cuckoo filters are optionally used to have a fast path if a key is not in
         the table
       - unique keys
       - thread-safe
@@ -87,14 +87,34 @@ object:
 
 `Finding` objects cannot be copied but can be moved.
 
+Building
+--------
+
+We use a couple of third-party submodules for performance testing which are built by our CMAKE script by default, so building is slightly involved. RocksDB suggests having Snappy, Zlib, and BZip2 installed on your system. Provided those dependencies are installed, a script like the following should build our code:
+```
+git clone {REPOSITORY} {SRC_DIR}
+cd {SRC_DIR}
+git submodule init
+cd 3rdParty/rocksdb
+make static_lib
+mkdir {BUILD_DIR}
+cd {BUILD_DIR}
+cmake {SRC_DIR}
+make
+```
+
 Performance Testing
 -------------------
 
-We include a performance testing tool which runs a configurable randomized workload and can compare the performance of `CuckooMap` against that of `std::unordered_map`. The `PerformanceTest` executable takes 11 parameters as follows:
+We include a performance testing tool which runs a configurable randomized workload and can compare the performance of `CuckooMap` against that of `std::unordered_map`, ArangoDB's `AssocUnique`, and Facebook's RocksDB. The `PerformanceTest` executable takes 11 parameters as follows:
 
-  - `useCuckoo`: Set to 0 to use `std::unordered_map` and 1 to use `CuckooMap`
+  - `mapType`: Which type of map to use
+    * 0: `CuckooMap`
+    * 1: `std::unordered_map`
+    * 2: `AssocUnique`
+    * 3: `RocksDB`
   - `nOpCount`: The target number of operations to run in total; Integer, 0 < `opCount`
-  - `nInitialSize`: The initial size of the table; Integer, 0 < `nInitialSize`
+  - `nInitialSize`: The initial number of elements to insert; Integer, 0 < `nInitialSize`
   - `nMaxSize`: The maximum number of elements in the set at any given time; Integer, 0 < `nMaxSize`
   - `nWorking`: The size of the 'hot' set; Integer, 0 < `nWorking`
   - `pInsert`: The probability that the chosen operation will be an `insert`; Double, 0 <= `pInsert` <= 1
@@ -103,20 +123,15 @@ We include a performance testing tool which runs a configurable randomized workl
   - `pWorking`: The probability that a `lookup` or `remove` operation will be executed on an element in the 'hot' set; Double, 0 <= `pWorking` <= 1
   - `pMiss`: The probability that a `lookup` operation will search for an item not in the table; Double, 0 <= `pMiss` <= 1
   - `seed`: The seed for the PRNG; Integer, 0 < `seed` < 2^64
+  - `ramThreshold`: Maximum number of elements for in-RAM structures; if expected dataset is larger, bail out with defaults to indicate failure
 
 Proper usage then is as follows:
 ```
-PerformanceTest [useCuckoo] [nOpCount] [nInitialSize] [nMaxSize] [nWorking] [pInsert] [pLookup] [pRemove] [pWorking] [pMiss] [seed]
+PerformanceTest [mapType] [nOpCount] [nInitialSize] [nMaxSize] [nWorking] [pInsert] [pLookup] [pRemove] [pWorking] [pMiss] [seed] [ramThreshold]
 ```  
 
-In order to generate readable results, one should use the scripts included in `/performance`. Here we provide tools which should make running a variety of comparison tests much easier. To run the tests, do the following:
+In order to generate readable results, one should use the scripts included in `/performance`. Here we provide tools which should make running a variety of comparison tests much easier. To run the tests, simply run the following command inside `{BUILD_DIR}/performance`:
 ```
-mkdir {BUILD_DIR}
-cd {BUILD_DIR}
-cmake {SRC_DIR}
-make
-
-cd performance
 ./RunBattery.sh
 ```
 The results will then be output to a GitHub-flavored markdown file located at `{BUILD_DIR}/performance/results.md`. For a given result set, we display the test parameters as well as operation latencies at various percentiles for both `std::unordered_map` and `CuckooMap`. A latency column is labeled as `UM Xp` to denoted the Xth percentile for `std::unordered_map` and `CM Yp` to denote the Yth percentile for `CuckooMap`.

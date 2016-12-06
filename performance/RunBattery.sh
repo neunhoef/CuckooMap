@@ -1,6 +1,10 @@
 #!/bin/bash
 
 seed=119384893020
+memInKB=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+memInBytes=$(expr $memInKB \* 1024)
+itemsAllowed=$(expr $memInBytes / 16)
+ramThreshold=$(expr $itemsAllowed / 8)
 
 inputFile='battery.csv'
 outputFile='rawResults.csv'
@@ -13,14 +17,13 @@ IFS=$'\n'; set -f; list=($(<$inputFile))
 for item in ${list[@]}
 do
   echo $item >> $outputFile
-  for useCuckoo in {0..1}
+  for mapType in {0..3}
   do
     params=$(echo $item | sed 's/,/ /g')
-    command=$(echo '../PerformanceTest' $useCuckoo $params $seed)
+    command=$(echo '../PerformanceTest' $useCuckoo $params $seed $ramThreshold)
     result=$(eval $command)
     echo $result >> $outputFile
   done
 done
 
 $(./FormatResults.sh)
-rm $outputFile
