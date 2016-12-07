@@ -3,7 +3,9 @@ project(CuckooMap)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake ${CMAKE_MODULE_PATH})
 
+find_package(jemalloc REQUIRED)
 find_package(Threads REQUIRED)
 find_package(ZLIB REQUIRED)
 find_package(BZip2 REQUIRED)
@@ -59,6 +61,7 @@ target_link_libraries(PerformanceTest PRIVATE
     ${ZLIB_LIBRARIES}
     ${BZIP2_LIBRARIES}
     snappy
+    jemalloc
     -ldl
     rocksdb
     qdigest
