@@ -4,3 +4,6 @@
 [submodule "3rdParty/rocksdb"]
 	path = 3rdParty/rocksdb
 	url = https://github.com/facebook/rocksdb.git
+[submodule "3rdParty/cpp-btree"]
+	path = 3rdParty/cpp-btree
+	url = https://github.com/algorithm-ninja/cpp-btree.git

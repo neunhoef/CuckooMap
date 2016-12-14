@@ -17,7 +17,7 @@ IFS=$'\n'; set -f; list=($(<$inputFile))
 for item in ${list[@]}
 do
   echo $item >> $outputFile
-  for mapType in {0..3}
+  for mapType in {0..4}
   do
     params=$(echo $item | sed 's/,/ /g')
     command=$(echo '../PerformanceTest' $mapType $params $seed $ramThreshold)

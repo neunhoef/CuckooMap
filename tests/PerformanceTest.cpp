@@ -16,6 +16,7 @@
 #include <rocksdb/db.h>
 #include <rocksdb/slice.h>
 #include <rocksdb/table.h>
+#include "btree_map.h"
 
 #define MAX(a, b) (((a) >= (b)) ? (a) : (b))
 #define MIN(a, b) (((a) <= (b)) ? (a) : (b))
@@ -46,6 +47,10 @@ struct Element {
 };
 
 namespace std {
+template <>
+struct less<Key> {
+  bool operator()(Key const& a, Key const& b) const { return a.k < b.k; }
+};
 template <>
 struct equal_to<Key> {
   bool operator()(Key const& a, Key const& b) const { return a.k == b.k; }
@@ -102,6 +107,7 @@ class WeightedSelector {
 typedef HashWithSeed<Key, 0xdeadbeefdeadbeefULL> KeyHash;
 typedef std::unordered_map<Key, Value*, KeyHash> unordered_map_for_key;
 typedef arangodb::basics::AssocUnique<Key, Element> AssocUnique;
+typedef btree::btree_map<Key, Value> BTree;
 
 static std::equal_to<Key> _compKey;
 static std::equal_to<Value> _compValue;
@@ -135,8 +141,12 @@ static bool auIsEqualElementElementByKey(void*, Element const& e1,
 #define MAP_TYPE_UNORDERED 1
 #define MAP_TYPE_ASSOC_UNIQUE 2
 #define MAP_TYPE_ROCKSDB 3
+#define MAP_TYPE_BTREE 4
 
 class TestMap {
+ public:
+  typedef std::pair<const Key, Value> btree_pair;
+
  private:
   int _mapType;
   CuckooMap<Key, Value>* _cuckoo;
@@ -145,6 +155,7 @@ class TestMap {
   rocksdb::DB* _rocksDb;
   std::string _rocksDbFolder;
   rocksdb::Status _rdStatus;
+  BTree* _btree;
 
  public:
   TestMap(int mapType, size_t initialSize)
@@ -174,6 +185,11 @@ class TestMap {
         options.create_if_missing = true;
         _rdStatus = rocksdb::DB::Open(options, _rocksDbFolder, &_rocksDb);
         assert(_rdStatus.ok());
+        break;
+      }
+      case MAP_TYPE_BTREE: {
+        _btree = new BTree();
+        break;
       }
     }
   }
@@ -194,6 +210,10 @@ class TestMap {
       case MAP_TYPE_ROCKSDB: {
         delete _rocksDb;
         remove_directory(reinterpret_cast<const char*>(&_rocksDbFolder[0]));
+        break;
+      }
+      case MAP_TYPE_BTREE: {
+        delete _btree;
         break;
       }
     }
@@ -233,6 +253,10 @@ class TestMap {
           return noV;
         }
       }
+      case MAP_TYPE_BTREE: {
+        auto element = _btree->find(k);
+        return (element != _btree->end()) ? ((*element).second) : noV;
+      }
     }
   }
   bool insert(Key const& k, Value* v) {
@@ -254,6 +278,9 @@ class TestMap {
         _rdStatus = _rocksDb->Put(rocksdb::WriteOptions(), kSlice, vSlice);
         return _rdStatus.ok();
       }
+      case MAP_TYPE_BTREE:
+        btree_pair p(k, *v);
+        return _btree->insert(p).second;
     }
   }
   bool remove(Key const& k) {
@@ -270,6 +297,8 @@ class TestMap {
         _rdStatus = _rocksDb->Delete(rocksdb::WriteOptions(), kSlice);
         return _rdStatus.ok();
       }
+      case MAP_TYPE_BTREE:
+        return (_btree->erase(k) > 0);
     }
   }
 };
@@ -281,6 +310,7 @@ class TestMap {
 //                 1 - std::unordered_map
 //                 2 - AssocUnique
 //                 3 - RocksDB
+//                 4 - cpp-btree
 //    [nOpCount]: Number of operations to run
 //    [nInitialSize]: Initial number of elements
 //    [nMaxSize]: Maximum number of elements
@@ -319,7 +349,8 @@ int main(int argc, char* argv[]) {
     std::cout << "0,0,0,0,0,0,0,0,0,0,0,0,0" << std::endl;
   };
 
-  if (mapType == MAP_TYPE_UNORDERED || mapType == MAP_TYPE_ASSOC_UNIQUE) {
+  if (mapType == MAP_TYPE_UNORDERED || mapType == MAP_TYPE_ASSOC_UNIQUE ||
+      mapType == MAP_TYPE_BTREE) {
     if (nInitialSize + (uint64_t)(pInsert * nOpCount) > ramThreshold) {
       printDefault();
       return 0;

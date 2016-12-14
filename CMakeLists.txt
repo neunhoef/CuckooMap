@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.0)
 project(CuckooMap)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake ${CMAKE_MODULE_PATH})
 
 find_package(jemalloc REQUIRED)
@@ -18,6 +18,14 @@ target_include_directories(qdigest INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/3rdPart
 
 add_library(rocksdb INTERFACE)
 target_include_directories(rocksdb INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/3rdParty/rocksdb/include)
+
+add_library(cppbtree
+  ${CMAKE_CURRENT_SOURCE_DIR}/3rdParty/cpp-btree/btree.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/3rdParty/cpp-btree/btree_map.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/3rdParty/cpp-btree/btree_set.h
+)
+set_target_properties(cppbtree PROPERTIES LINKER_LANGUAGE CXX)
+target_include_directories(cppbtree INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/3rdParty/cpp-btree)
 
 add_library(cuckoo INTERFACE)
 target_include_directories(cuckoo INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/include")
@@ -64,6 +72,7 @@ target_link_libraries(PerformanceTest PRIVATE
     jemalloc
     -ldl
     rocksdb
+    cppbtree
     qdigest
     cuckoo
 )
